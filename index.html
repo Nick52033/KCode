@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>k-Coder</title>
+    <title>KCode</title>
     <script>
       // 首帧之前确定主题：窗口底色、启动屏与真实界面使用同一套配色，避免启动阶段闪白/闪黑。
       (function () {
@@ -142,11 +142,33 @@
     <div id="app-splash" role="status" aria-live="polite">
       <span class="boot-mark" aria-hidden="true">
         <svg viewBox="0 0 512 512" width="52" height="52" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <rect width="512" height="512" rx="104" fill="currentColor" />
-          <path d="M154 112h72v119l104-119h88L298 247l128 153h-91L250 294l-24 27v79h-72V112Z" fill="#ffffff" />
+          <defs>
+            <linearGradient id="kcode-boot-bg" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0" stop-color="#1A1A1E" />
+              <stop offset="0.55" stop-color="#0C0C0E" />
+              <stop offset="1" stop-color="#000000" />
+            </linearGradient>
+            <linearGradient id="kcode-boot-glyph" x1="0.18" y1="0" x2="0.85" y2="1">
+              <stop offset="0" stop-color="#FFFFFF" />
+              <stop offset="0.5" stop-color="#E8E8EF" />
+              <stop offset="1" stop-color="#A8A8B8" />
+            </linearGradient>
+            <linearGradient id="kcode-boot-trail" x1="0.1" y1="0.1" x2="0.9" y2="0.9">
+              <stop offset="0" stop-color="#C9C9D6" stop-opacity="0.08" />
+              <stop offset="0.55" stop-color="#D8D8E2" stop-opacity="0.4" />
+              <stop offset="1" stop-color="#E8E8EF" stop-opacity="0.6" />
+            </linearGradient>
+          </defs>
+          <rect width="512" height="512" rx="104" fill="url(#kcode-boot-bg)" />
+          <g fill="none" stroke="url(#kcode-boot-glyph)" stroke-width="66" stroke-linecap="round">
+            <path d="M214 112 C 194 200, 190 266, 204 366" />
+            <path d="M208 258 C 280 240, 340 196, 392 128" />
+            <path d="M208 262 C 284 284, 344 326, 400 360" />
+          </g>
+          <path d="M206 408 C 276 426, 340 418, 396 386" fill="none" stroke="url(#kcode-boot-trail)" stroke-width="26" stroke-linecap="round" />
         </svg>
       </span>
-      <span class="boot-title">k-Coder</span>
+      <span class="boot-title">KCode</span>
       <span class="boot-bar" aria-hidden="true"></span>
       <span class="boot-hint">正在启动工作区…</span>
     </div>

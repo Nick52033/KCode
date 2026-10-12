@@ -844,8 +844,13 @@ fn apply_hunks(current: &str, hunks: &[PatchHunk], path: &str) -> Result<String,
             .join("\n");
         let matches = line_bounded_matches(&output, &old);
         if matches.len() != 1 {
+            let hint = if matches.is_empty() {
+                "; no exact match: the current lines, indentation, or whitespace differ from this hunk; re-read the target and rebuild it"
+            } else {
+                "; add surrounding context until the hunk matches exactly one location"
+            };
             return Err(PatchError::Conflict(format!(
-                "hunk for {path} matched {} locations instead of exactly one",
+                "hunk for {path} matched {} locations instead of exactly one{hint}",
                 matches.len()
             )));
         }
@@ -1206,6 +1211,42 @@ mod tests {
         assert!(error.contains("src/protocol/mod.rs"));
         assert!(error.contains("patch line 2"));
         assert!(error.contains("add an '@@' hunk"));
+    }
+
+    #[test]
+    fn conflict_reports_stale_hunk_context_without_exposing_file_contents() {
+        let directory = tempfile::tempdir().unwrap();
+        fs::write(
+            directory.path().join("file.txt"),
+            "before\nprivate current text\ntail\n",
+        )
+        .unwrap();
+        let patch = "*** Begin Patch\n*** Update File: file.txt\n@@\n-before\n-missing\n+new\n*** End Patch";
+
+        let error = PatchService::new()
+            .preview_patch(directory.path(), patch)
+            .unwrap_err()
+            .to_string();
+
+        assert!(error.contains("matched 0 locations"));
+        assert!(error.contains("no exact match"));
+        assert!(error.contains("indentation, or whitespace"));
+        assert!(error.contains("re-read the target"));
+        assert!(!error.contains("private current text"));
+
+        fs::write(
+            directory.path().join("file.txt"),
+            "repeat\nbetween\nrepeat\n",
+        )
+        .unwrap();
+        let ambiguous_patch =
+            "*** Begin Patch\n*** Update File: file.txt\n@@\n-repeat\n+changed\n*** End Patch";
+        let error = PatchService::new()
+            .preview_patch(directory.path(), ambiguous_patch)
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("matched 2 locations"));
+        assert!(error.contains("add surrounding context"));
     }
 
     #[tokio::test]

@@ -109,6 +109,7 @@ interface WorkbenchState {
   activeTurns: Record<string, string>;
   restoredActiveTurns: Record<string, string>;
   cancellingTurns: Record<string, string>;
+  pendingRetries: Record<string, number>;
   mailboxRevisions: Record<string, number>;
   messageQueue: QueuedMessage[];
   usage: TokenUsage | null;
@@ -146,6 +147,7 @@ interface WorkbenchState {
   error: string;
   initialize: () => Promise<void>;
   reloadThreads: () => Promise<void>;
+  refreshThreadSummary: (threadId: string) => Promise<void>;
   searchThreadHistory: (query: string) => Promise<void>;
   renameConversation: (threadId: string, title: string) => Promise<void>;
   deleteConversation: (threadId: string) => Promise<void>;
@@ -355,7 +357,17 @@ function withoutActiveTurn(activeTurns: Record<string, string>, threadId: string
   return next;
 }
 
+function withoutPendingRetry(pendingRetries: Record<string, number>, threadId: string) {
+  if (!(threadId in pendingRetries)) return pendingRetries;
+  const next = { ...pendingRetries };
+  delete next[threadId];
+  return next;
+}
+
 const LEGACY_PROVIDER_STORAGE_KEY = "k-coder-providers";
+
+// 与后端新会话默认标题保持一致：标题仍是该值时才有必要刷新会话列表。
+const DEFAULT_THREAD_TITLE = "新会话";
 
 function providerSignature(provider: Partial<ProviderConfigView>) {
   return [provider.name, provider.baseUrl, provider.transport, provider.model].join("\u0000");
@@ -418,6 +430,7 @@ export const useWorkbenchStore = create<WorkbenchState>((set, get) => ({
   activeTurns: {},
   restoredActiveTurns: {},
   cancellingTurns: {},
+  pendingRetries: {},
   mailboxRevisions: {},
   messageQueue: [],
   usage: null,
@@ -480,6 +493,26 @@ export const useWorkbenchStore = create<WorkbenchState>((set, get) => ({
   reloadThreads: async () => {
     const threads = await listThreads();
     set({ threads });
+  },
+
+  // 后端在首条 user_message 落库时自动把标题从"新会话"改成消息摘要，
+  // 但列表只在初始化和删除会话时重载，所以这里在发送成功后单独刷新该会话摘要。
+  refreshThreadSummary: async (threadId) => {
+    const current = get().threads.find((thread) => thread.id === threadId);
+    // 标题已被首条消息摘要或用户重命名确定后不再重复请求列表；
+    // 搜索过滤下的列表不包含该会话时同样保持原样，避免把过滤结果替换成全量列表。
+    if (!current || current.title !== DEFAULT_THREAD_TITLE) return;
+    try {
+      const threads = await listThreads();
+      const updated = threads.find((thread) => thread.id === threadId);
+      if (!updated) return;
+      set((state) => ({
+        threads: state.threads.map((thread) => (thread.id === threadId ? updated : thread)),
+        error: "",
+      }));
+    } catch (error) {
+      set({ error: errorMessage(error) });
+    }
   },
 
   searchThreadHistory: async (query) => {
@@ -777,6 +810,8 @@ export const useWorkbenchStore = create<WorkbenchState>((set, get) => ({
           cancellingTurns: withoutActiveTurn(state.cancellingTurns, threadId),
         }));
       }
+      // turn_start 返回时 user_message 已落库，自动标题此刻可读，刷新列表避免停留在"新会话"。
+      void get().refreshThreadSummary(threadId);
     } catch (error) {
       set({ error: errorMessage(error) });
     }
@@ -861,10 +896,15 @@ export const useWorkbenchStore = create<WorkbenchState>((set, get) => ({
 
   retryLastTurn: async () => {
     const threadId = get().activeThreadId;
-    if (!threadId || get().activeTurns[threadId]) return;
-    set({ error: "", usage: null });
+    if (!threadId || get().activeTurns[threadId] || get().pendingRetries[threadId] !== undefined) return;
+    set((state) => ({
+      error: "",
+      usage: null,
+      pendingRetries: { ...state.pendingRetries, [threadId]: Date.now() },
+    }));
     try {
       const handle = await retryTurn(threadId);
+      set((state) => ({ pendingRetries: withoutPendingRetry(state.pendingRetries, threadId) }));
       if (handle.state === "queued") {
         await get().processQueue();
       } else if (!terminalTurnIds.has(handle.turnId)) {
@@ -874,7 +914,10 @@ export const useWorkbenchStore = create<WorkbenchState>((set, get) => ({
         }));
       }
     } catch (error) {
-      set({ error: errorMessage(error) });
+      set((state) => ({
+        pendingRetries: withoutPendingRetry(state.pendingRetries, threadId),
+        error: errorMessage(error),
+      }));
     }
   },
 
@@ -1132,6 +1175,11 @@ export const useWorkbenchStore = create<WorkbenchState>((set, get) => ({
         restoredActiveTurns: withoutActiveTurn(state.restoredActiveTurns, event.threadId),
       }));
     }
+    if (event.type === "turn_started" || terminalEvent || event.type === "turn_rejected") {
+      set((state) => ({
+        pendingRetries: withoutPendingRetry(state.pendingRetries, event.threadId),
+      }));
+    }
     set((state) => reduceTurnLifecycle(event, {
       activeTurns: state.activeTurns,
       cancellingTurns: state.cancellingTurns,
@@ -1140,6 +1188,12 @@ export const useWorkbenchStore = create<WorkbenchState>((set, get) => ({
     if (hydration) {
       hydration.events.push(event);
       return;
+    }
+    // user_message 在 turn_started 之前落库，此刻首条消息的自动标题已可读；
+    // 排队消息也走这条路径，因此在这里统一刷新会话列表标题。
+    // 放在 hydration 提前返回之后，避免历史回放重复请求列表。
+    if (event.type === "turn_started") {
+      void get().refreshThreadSummary(event.threadId);
     }
     if (event.threadId !== get().activeThreadId) {
       if (terminalEvent) {

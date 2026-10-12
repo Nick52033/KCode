@@ -12,6 +12,64 @@ fn read_call(id: usize, start_line: usize, line_count: usize) -> ProviderEvent {
 }
 
 #[tokio::test]
+async fn repeated_inspections_receive_guidance_to_stop_repeating_status() {
+    let (directory, _repository, runtime, thread_id) = runtime_fixture().await;
+    for index in 0..=MAX_PROVIDER_CALLS_BEFORE_PROGRESS_NUDGE as usize {
+        std::fs::create_dir(directory.path().join(format!("inspection-{index}"))).unwrap();
+    }
+    let scripts = (0..=MAX_PROVIDER_CALLS_BEFORE_PROGRESS_NUDGE)
+        .map(|index| {
+            vec![
+                Ok(ProviderEvent::ToolCall {
+                    call: ToolCall {
+                        id: format!("inspection-{index}"),
+                        name: "list_directory".into(),
+                        arguments: json!({"path": format!("inspection-{index}")}),
+                        metadata: json!({}),
+                    },
+                }),
+                Ok(ProviderEvent::Completed),
+            ]
+        })
+        .chain(std::iter::once(vec![
+            Ok(ProviderEvent::TextDelta {
+                delta: "Inspection complete.".into(),
+            }),
+            Ok(ProviderEvent::Completed),
+        ]))
+        .collect();
+    let provider = Arc::new(FakeProvider::script(scripts));
+
+    let outcome = runtime
+        .run_turn(
+            provider.clone(),
+            "fake".into(),
+            RunTurnRequest {
+                thread_id,
+                input: "inspect the relevant files and then finish".into(),
+                agent_mode: None,
+            },
+            CancellationToken::new(),
+            Arc::new(RecordingPublisher::default()),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(outcome.state, TurnState::Completed, "{outcome:?}");
+    let nudge_request = &provider.requests()[MAX_PROVIDER_CALLS_BEFORE_PROGRESS_NUDGE as usize];
+    assert!(nudge_request.messages.iter().any(|message| {
+        matches!(
+            message,
+            ProviderMessage::Text {
+                role: MessageRole::System,
+                text
+            } if text.contains("不要重复汇报计划状态")
+                && text.contains("从剩余工作中选一个具体动作")
+        )
+    }));
+}
+
+#[tokio::test]
 async fn hard_provider_call_budget_survives_continuation() {
     let (_directory, _repository, runtime, thread_id) = runtime_fixture().await;
     let scripts = (0..4)
@@ -60,14 +118,13 @@ async fn hard_provider_call_budget_survives_continuation() {
         "{outcome:?}"
     );
     assert_eq!(provider.requests().len(), 3);
-    let events = publisher
-        .events
-        .lock()
-        .unwrap();
+    let events = publisher.events.lock().unwrap();
     let failure = events
         .iter()
         .find_map(|event| match &event.event {
-            AgentEvent::TurnFailed { error: Some(error), .. } => Some(error),
+            AgentEvent::TurnFailed {
+                error: Some(error), ..
+            } => Some(error),
             _ => None,
         })
         .expect("hard provider call limit should publish a structured error");
@@ -75,6 +132,302 @@ async fn hard_provider_call_budget_survives_continuation() {
     assert_eq!(failure.details.as_ref().unwrap()["providerCalls"], 3);
     assert_eq!(failure.details.as_ref().unwrap()["maxProviderCalls"], 3);
     assert_eq!(failure.details.as_ref().unwrap()["recovery"], "new_turn");
+}
+
+#[tokio::test]
+async fn varied_read_only_inspections_reach_the_productive_progress_guard() {
+    let (directory, _repository, runtime, thread_id) = runtime_fixture().await;
+    let expected_provider_calls = MAX_PROVIDER_CALLS_WITHOUT_PRODUCTIVE_PROGRESS as usize;
+    for index in 0..=expected_provider_calls {
+        std::fs::create_dir(directory.path().join(format!("inspection-{index}"))).unwrap();
+    }
+    let scripts = (0..=expected_provider_calls)
+        .map(|index| {
+            vec![
+                Ok(ProviderEvent::ToolCall {
+                    call: ToolCall {
+                        id: format!("inspection-{index}"),
+                        name: "list_directory".into(),
+                        arguments: json!({"path": format!("inspection-{index}")}),
+                        metadata: json!({}),
+                    },
+                }),
+                Ok(ProviderEvent::Completed),
+            ]
+        })
+        .chain(std::iter::once(vec![
+            Ok(ProviderEvent::TextDelta {
+                delta: "finished after inspecting everything".into(),
+            }),
+            Ok(ProviderEvent::Completed),
+        ]))
+        .collect();
+    let provider = Arc::new(FakeProvider::script(scripts));
+    let publisher = Arc::new(UserInputResolvingPublisher::new(
+        runtime.user_input_manager(),
+        TURN_CONTINUE,
+    ));
+    let outcome = runtime
+        .with_soft_turn_limits(SoftTurnLimits::new(20, u64::MAX, u64::MAX))
+        .run_turn(
+            provider.clone(),
+            "fake".into(),
+            RunTurnRequest {
+                thread_id,
+                input: "inspect the workspace and then make a change".into(),
+                agent_mode: None,
+            },
+            CancellationToken::new(),
+            publisher,
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(outcome.state, TurnState::Failed, "{outcome:?}");
+    assert!(
+        outcome
+            .error
+            .as_deref()
+            .is_some_and(|error| error.contains(&format!(
+                "连续 {MAX_PROVIDER_CALLS_WITHOUT_PRODUCTIVE_PROGRESS} 次模型请求没有产生实质进展"
+            ))),
+        "{outcome:?}"
+    );
+    assert_eq!(provider.requests().len(), expected_provider_calls);
+}
+
+#[tokio::test]
+async fn varied_search_observations_reach_the_productive_progress_guard() {
+    let (_directory, _repository, runtime, thread_id) = runtime_fixture().await;
+    let script = (0..=MAX_PROVIDER_CALLS_WITHOUT_PRODUCTIVE_PROGRESS)
+        .map(|id| {
+            vec![
+                Ok(ProviderEvent::ToolCall {
+                    call: ToolCall {
+                        id: format!("search-{id}"),
+                        name: "search_repository".into(),
+                        arguments: json!({"query": format!("missing-symbol-{id}")}),
+                        metadata: json!({}),
+                    },
+                }),
+                Ok(ProviderEvent::Completed),
+            ]
+        })
+        .collect();
+    let provider = Arc::new(FakeProvider::script(script));
+
+    let outcome = runtime
+        .run_turn(
+            provider.clone(),
+            "fake".into(),
+            RunTurnRequest {
+                thread_id,
+                input: "search until the task is complete".into(),
+                agent_mode: None,
+            },
+            CancellationToken::new(),
+            Arc::new(RecordingPublisher::default()),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(outcome.state, TurnState::Failed, "{outcome:?}");
+    assert!(
+        outcome
+            .error
+            .as_deref()
+            .is_some_and(|error| error.contains(&format!(
+                "连续 {MAX_PROVIDER_CALLS_WITHOUT_PRODUCTIVE_PROGRESS} 次模型请求没有产生实质进展"
+            ))),
+        "{outcome:?}"
+    );
+    assert_eq!(
+        provider.requests().len(),
+        MAX_PROVIDER_CALLS_WITHOUT_PRODUCTIVE_PROGRESS as usize
+    );
+}
+
+#[tokio::test]
+async fn distinct_read_coverage_reaches_the_productive_progress_guard() {
+    let (directory, _repository, runtime, thread_id) = runtime_fixture().await;
+    let body = (1..=MAX_PROVIDER_CALLS_WITHOUT_PRODUCTIVE_PROGRESS)
+        .map(|line| format!("line {line}\n"))
+        .collect::<String>();
+    std::fs::write(directory.path().join("source.txt"), body).unwrap();
+    let script = (0..=MAX_PROVIDER_CALLS_WITHOUT_PRODUCTIVE_PROGRESS)
+        .map(|id| {
+            vec![
+                Ok(read_call(id as usize, id as usize + 1, 1)),
+                Ok(ProviderEvent::Completed),
+            ]
+        })
+        .collect();
+    let provider = Arc::new(FakeProvider::script(script));
+
+    let outcome = runtime
+        .run_turn(
+            provider.clone(),
+            "fake".into(),
+            RunTurnRequest {
+                thread_id,
+                input: "inspect each line".into(),
+                agent_mode: None,
+            },
+            CancellationToken::new(),
+            Arc::new(RecordingPublisher::default()),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(outcome.state, TurnState::Failed, "{outcome:?}");
+    assert!(outcome.error.as_deref().is_some_and(|error| {
+        error.contains(&format!(
+            "连续 {MAX_PROVIDER_CALLS_WITHOUT_PRODUCTIVE_PROGRESS} 次模型请求没有产生实质进展"
+        ))
+    }));
+    assert_eq!(
+        provider.requests().len(),
+        MAX_PROVIDER_CALLS_WITHOUT_PRODUCTIVE_PROGRESS as usize
+    );
+}
+
+#[tokio::test]
+async fn a_large_read_only_tool_batch_is_stopped_before_its_next_provider_request() {
+    let (directory, _repository, runtime, thread_id) = runtime_fixture().await;
+    for index in 0..=MAX_TOOL_CALLS_WITHOUT_PRODUCTIVE_PROGRESS {
+        std::fs::create_dir(directory.path().join(format!("batch-{index}"))).unwrap();
+    }
+    let mut batch = (0..=MAX_TOOL_CALLS_WITHOUT_PRODUCTIVE_PROGRESS)
+        .map(|index| {
+            Ok(ProviderEvent::ToolCall {
+                call: ToolCall {
+                    id: format!("batch-{index}"),
+                    name: "list_directory".into(),
+                    arguments: json!({"path": format!("batch-{index}")}),
+                    metadata: json!({}),
+                },
+            })
+        })
+        .collect::<Vec<_>>();
+    batch.push(Ok(ProviderEvent::Completed));
+    let provider = Arc::new(FakeProvider::script(vec![batch]));
+
+    let outcome = runtime
+        .run_turn(
+            provider.clone(),
+            "fake".into(),
+            RunTurnRequest {
+                thread_id,
+                input: "inspect these directories".into(),
+                agent_mode: None,
+            },
+            CancellationToken::new(),
+            Arc::new(RecordingPublisher::default()),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(outcome.state, TurnState::Failed, "{outcome:?}");
+    assert!(outcome.error.as_deref().is_some_and(|error| {
+        error.contains(&format!(
+            "连续 {MAX_TOOL_CALLS_WITHOUT_PRODUCTIVE_PROGRESS} 次工具调用没有产生实质进展"
+        ))
+    }));
+    assert_eq!(provider.requests().len(), 1);
+}
+
+#[test]
+fn productive_progress_counts_changes_plan_completion_and_new_verification_results() {
+    let mut tracker = ProductiveProgressTracker::default();
+    let read = ToolCall {
+        id: "read".into(),
+        name: "read_file".into(),
+        arguments: json!({"path": "source.txt", "startLine": 1, "lineCount": 1}),
+        metadata: json!({}),
+    };
+    let read_result = versioned_read_result("source.txt", "rev-1", 1, 1);
+    assert!(!tracker.observe_tool_result(1, 1, &read, &read_result));
+
+    let search = ToolCall {
+        id: "search".into(),
+        name: "run_command".into(),
+        arguments: json!({"command": "rg TODO src"}),
+        metadata: json!({}),
+    };
+    let search_result = ToolResult {
+        success: true,
+        output: "src/lib.rs: TODO".into(),
+        metadata: json!({"exitCode": 0}),
+    };
+    assert!(!tracker.observe_tool_result(2, 2, &search, &search_result));
+
+    let verification = ToolCall {
+        id: "test".into(),
+        name: "run_command".into(),
+        arguments: json!({"command": "cargo test --lib agent::tests::sample"}),
+        metadata: json!({}),
+    };
+    let verification_result = ToolResult {
+        success: true,
+        output: "test result: ok".into(),
+        metadata: json!({"exitCode": 0}),
+    };
+    assert!(tracker.observe_tool_result(3, 3, &verification, &verification_result));
+    assert!(!tracker.observe_tool_result(20, 20, &verification, &verification_result));
+    let repeated_verification_with_different_output = ToolResult {
+        output: "another test run took 2 seconds".into(),
+        ..verification_result.clone()
+    };
+    assert!(!tracker.observe_tool_result(
+        25,
+        25,
+        &verification,
+        &repeated_verification_with_different_output
+    ));
+    assert!(tracker.failure_reason(40, 40).is_none());
+    assert!(
+        tracker
+            .failure_reason(63, 40)
+            .is_some_and(|reason| reason.contains("模型请求"))
+    );
+    assert!(
+        tracker
+            .failure_reason(40, 123)
+            .is_some_and(|reason| reason.contains("工具调用"))
+    );
+
+    let write = ToolCall {
+        id: "write".into(),
+        name: "write_file".into(),
+        arguments: json!({"path": "source.txt", "content": "updated"}),
+        metadata: json!({}),
+    };
+    let write_result = ToolResult {
+        success: true,
+        output: "updated".into(),
+        metadata: json!({"changeSet": {"files": [{"path": "source.txt"}]}}),
+    };
+    assert!(tracker.observe_tool_result(41, 41, &write, &write_result));
+    assert!(tracker.failure_reason(42, 42).is_none());
+    assert!(tracker.observe_tool_result(42, 42, &verification, &verification_result));
+    assert!(tracker.failure_reason(42, 42).is_none());
+
+    let plan = ToolCall {
+        id: "plan".into(),
+        name: "update_plan".into(),
+        arguments: json!({"steps": [
+            {"step": "inspect", "status": "completed"},
+            {"step": "edit", "status": "in_progress"}
+        ]}),
+        metadata: json!({}),
+    };
+    let plan_result = ToolResult {
+        success: true,
+        output: "plan saved".into(),
+        metadata: json!({"revision": 2}),
+    };
+    assert!(tracker.observe_tool_result(43, 43, &plan, &plan_result));
+    assert!(!tracker.observe_tool_result(44, 44, &plan, &plan_result));
 }
 
 #[tokio::test]

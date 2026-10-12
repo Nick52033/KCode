@@ -6,7 +6,7 @@ import { isDisplayImageSource, MarkdownImage } from "./MarkdownImage";
 
 const PROPOSED_PLAN = /<proposed_plan>([\s\S]*?)(?:<\/proposed_plan>|$)/g;
 
-export const MarkdownContent = memo(function MarkdownContent({ text }: { text: string }) {
+export const MarkdownContent = memo(function MarkdownContent({ text, preserveBreaks = false }: { text: string; preserveBreaks?: boolean }) {
   if (!text) return null;
 
   const parts: ReactNode[] = [];
@@ -16,7 +16,7 @@ export const MarkdownContent = memo(function MarkdownContent({ text }: { text: s
 
   while ((match = PROPOSED_PLAN.exec(text)) !== null) {
     if (match.index > lastIndex) {
-      parts.push(<MarkdownDocument text={text.slice(lastIndex, match.index)} key={`markdown-${key++}`} />);
+      parts.push(<MarkdownDocument text={text.slice(lastIndex, match.index)} preserveBreaks={preserveBreaks} key={`markdown-${key++}`} />);
     }
     parts.push(
       <section className="proposed-plan" key={`plan-${key++}`}>
@@ -25,7 +25,7 @@ export const MarkdownContent = memo(function MarkdownContent({ text }: { text: s
           <span>提议的计划</span>
         </div>
         <div className="proposed-plan-content">
-          <MarkdownDocument text={match[1].trim()} />
+          <MarkdownDocument text={match[1].trim()} preserveBreaks={preserveBreaks} />
         </div>
       </section>,
     );
@@ -33,25 +33,48 @@ export const MarkdownContent = memo(function MarkdownContent({ text }: { text: s
   }
 
   if (lastIndex < text.length) {
-    parts.push(<MarkdownDocument text={text.slice(lastIndex)} key={`markdown-${key}`} />);
+    parts.push(<MarkdownDocument text={text.slice(lastIndex)} preserveBreaks={preserveBreaks} key={`markdown-${key}`} />);
   }
 
-  return <div className="markdown-content">{parts.length ? parts : <MarkdownDocument text={text} />}</div>;
+  return <div className="markdown-content">{parts.length ? parts : <MarkdownDocument text={text} preserveBreaks={preserveBreaks} />}</div>;
 });
 
 const MarkdownDocument = memo(
-  function MarkdownDocument({ text }: { text: string }) {
+  function MarkdownDocument({ text, preserveBreaks = false }: { text: string; preserveBreaks?: boolean }) {
+    // unified 不接受插件列表里的 false 值，preserveBreaks 关闭时不能占位。
+    const remarkPlugins = [remarkGfm, ...(preserveBreaks ? [remarkSoftBreaks] : []), remarkArtifactImages];
     return (
-      <ReactMarkdown remarkPlugins={[remarkGfm, remarkArtifactImages]} components={markdownComponents} urlTransform={(url, key, node) => node.tagName === "img" && key === "src" ? (isDisplayImageSource(url) ? url : "") : defaultUrlTransform(url)} skipHtml>
+      <ReactMarkdown remarkPlugins={remarkPlugins} components={markdownComponents} urlTransform={(url, key, node) => node.tagName === "img" && key === "src" ? (isDisplayImageSource(url) ? url : "") : defaultUrlTransform(url)} skipHtml>
         {text}
       </ReactMarkdown>
     );
   },
-  (prev, next) => prev.text === next.text,
+  (prev, next) => prev.text === next.text && prev.preserveBreaks === next.preserveBreaks,
 );
 
 // Rewrite text nodes only: links, alt text and code retain their original content.
 type MarkdownNode = { type: string; value?: string; children?: MarkdownNode[]; url?: string; alt?: string };
+const BREAK_OPAQUE = ["code", "inlineCode", "html", "link", "linkReference", "image"];
+
+// 把单个换行转成硬换行（<br />）：Markdown 规范会把 soft break 折叠成空格，
+// 用户消息需要按输入原样换行展示（与移动端 pre-wrap 一致）。
+function remarkSoftBreaks() {
+  return (tree: MarkdownNode) => {
+    const walk = (node: MarkdownNode) => {
+      if (!node.children || BREAK_OPAQUE.includes(node.type)) return;
+      node.children = node.children.flatMap((child) => {
+        walk(child);
+        if (child.type !== "text" || !child.value) return [child];
+        const segments = child.value.split(/\r\n|\r|\n/);
+        return segments.flatMap((segment, index) => (
+          index === segments.length - 1 ? [{ type: "text", value: segment }] : [{ type: "text", value: segment }, { type: "break" }]
+        ));
+      });
+    };
+    walk(tree);
+  };
+}
+
 function remarkArtifactImages() {
   return (tree: MarkdownNode) => {
     const walk = (node: MarkdownNode) => {

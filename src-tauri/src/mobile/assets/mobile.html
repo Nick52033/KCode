@@ -6,7 +6,7 @@
 <meta name="color-scheme" content="light dark" />
 <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
 <meta name="theme-color" content="#16171d" media="(prefers-color-scheme: dark)" />
-<title>k-Coder 手机控制</title>
+<title>KCode 手机控制</title>
 <style>
   :root {
     --bg: #f6f7f9;
@@ -283,7 +283,7 @@
 <body>
 <header>
   <span class="status-dot" id="dot"></span>
-  <h1 id="title">k-Coder</h1>
+  <h1 id="title">KCode</h1>
   <span class="status-text" id="statusText">连接中…</span>
 </header>
 
@@ -331,7 +331,7 @@
 
 <section id="composer" class="composer hidden">
   <div class="composer-inner">
-    <textarea id="input" placeholder="给 k-Coder 发消息…" rows="1"></textarea>
+    <textarea id="input" placeholder="给 KCode 发消息…" rows="1"></textarea>
     <button id="interruptButton" class="stop danger">停止</button>
     <button id="sendButton" class="send primary">发送</button>
   </div>
@@ -1784,7 +1784,7 @@
     interrupt.disabled = !connected || !state.activeThreadId || !running;
     input.disabled = !connected || !state.activeThreadId;
     if (!connected) input.placeholder = "离线：草稿会保留，连接恢复后才能发送";
-    else input.placeholder = "给 k-Coder 发消息…";
+    else input.placeholder = "给 KCode 发消息…";
     renderChatMeta();
   }
 
@@ -1805,7 +1805,7 @@
     el("threadsSection").classList.remove("hidden");
     el("chatSection").classList.add("hidden");
     el("composer").classList.add("hidden");
-    el("title").textContent = "k-Coder";
+    el("title").textContent = "KCode";
   }
 
   function showChat() {

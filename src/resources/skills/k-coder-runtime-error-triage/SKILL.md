@@ -1,6 +1,6 @@
 ---
 name: k-coder-runtime-error-triage
-description: 排查 k-coder 桌面端运行时错误日志：一条命令一键巡检 runtime.jsonl 的 error 记录，自动分类「需要修复的产品缺陷 / 按设计或模型侧行为 / 待人工判定」并给出源码证据；也可按时间窗过滤、用 threadId 读 sessions/<threadId>.jsonl 压缩时间线复现单个失败对话。
+description: 排查 KCode 桌面端运行时错误日志：一条命令一键巡检 runtime.jsonl 的 error 记录，自动分类「需要修复的产品缺陷 / 按设计或模型侧行为 / 待人工判定」并给出源码证据；也可按时间窗过滤、用 threadId 读 sessions/<threadId>.jsonl 压缩时间线复现单个失败对话。
 triggers:
   - 查下运行日志
   - 运行日志报错
@@ -18,7 +18,7 @@ enabled: true
 category: observability
 ---
 
-# k-coder 运行时错误排查
+# KCode 运行时错误排查
 
 ## 日志位置与两种格式（别混用字段名）
 
@@ -33,7 +33,19 @@ category: observability
 
 ## 步骤
 
-0. **一键巡检（首选）**。用户问「哪些是 bug、哪些不是」时直接跑：
+0. **先确认日志位置（不同电脑不一样）**。运行时数据默认在 `%APPDATA%\com.kcoder.app\runtime-data\`，但不同电脑（含自定义数据目录、非 Windows 平台、便携版）路径可能不同。默认位置读不到、或用户没有明确说在这台电脑上时，先用 `request_user_input` 问一次日志目录或 `runtime.jsonl` 路径，不要凭默认路径猜。拿到位置后：
+
+   ```bash
+   python <本 skill 目录>/scripts/triage_runtime_errors.py <子命令> --runtime-root "<用户给的 runtime-data 目录>"
+   # 或直接指定日志文件
+   python <本 skill 目录>/scripts/triage_runtime_errors.py <子命令> --log-path "<用户给的 runtime.jsonl>"
+   ```
+
+   `--runtime-root` 与 `--log-path` 对 `classify` / `errors` / `session` 三个子命令都可用；目录或文件不存在时脚本直接以退出码 2 失败并打印原因。同一任务里位置只需确认一次，后续沿用。`session` 的会话文件从 `--runtime-root` 下的 `sessions/` 读取。
+
+   只有 `--log-path` 指向 `<runtime-data>/logs/runtime.jsonl` 这种标准布局时，`sessions/` 才能被反推出来；否则 `session` 子命令会要求补 `--runtime-root`。要读会话流水时优先直接给 `--runtime-root`。
+
+1. **一键巡检（首选）**。用户问「哪些是 bug、哪些不是」时直接跑：
 
    ```bash
    python <本 skill 目录>/scripts/triage_runtime_errors.py classify [--minutes 1440] [--all] [--verbose]
@@ -41,7 +53,7 @@ category: observability
 
    脚本读 `runtime.jsonl` 的 error 记录，按规则表分成三组输出：**已确认需要修复 / 待人工判定 / 按设计或输入问题**。规则只能提出调查线索，不能仅凭历史 error 确认当前源码仍有缺陷；涉及版本和成败时须核对当前源码、运行版本及完整工具结果。`--all` 扫全部历史，默认看 24 小时；`--verbose` 附注命中记录。
 
-1. **时间窗过滤 error 级记录**（默认半小时；用户给别的窗口就用用户的）：
+2. **时间窗过滤 error 级记录**（默认半小时；用户给别的窗口就用用户的）：
 
    ```bash
    python <本 skill 目录>/scripts/triage_runtime_errors.py errors --minutes 30
@@ -49,7 +61,7 @@ category: observability
 
    输出按 threadId 分组并标注每个会话最近活跃时间——最近活跃且含 error 的那个通常就是用户说的「当前对话」。
 
-2. **复现失败过程**（不要直接 dump 整个 `.jsonl`，大会话上万行会炸上下文）：
+3. **复现失败过程**（不要直接 dump 整个 `.jsonl`，大会话上万行会炸上下文）：
 
    ```bash
    python <本 skill 目录>/scripts/triage_runtime_errors.py session --thread <threadId> --since-ms <cutoff epoch 毫秒>
@@ -57,11 +69,13 @@ category: observability
 
    脚本已做压缩：只保留 user_message / turn_* / provider_call_usage / assistant_tool_calls / tool_result / assistant_message 等关键事件并截断文本。若要看某次工具调用的完整命令或完整输出，再单独读该行（`assistant_tool_calls` 里 `calls[].arguments` 是完整参数；`runtime.jsonl` 里的 arguments 可能被截断，别当全文用）。
 
-3. **逐条判定根因**。error 级记录绝大部分落进下面三类，先按表判定，剩不下的再深挖源码。
+4. **逐条判定根因**。error 级记录绝大部分落进下面三类，先按表判定，剩不下的再深挖源码。
 
    ### A. `turn_failed`：provider completed without text or a tool call
 
    空完成可能来自模型输出预算、协议适配或运行版本，应先列为待核对。读取失败前的 Provider 用量、响应终态和当前收尾源码，不能仅因模型名称或 reasoning 占比就排除适配器缺陷。
+
+   `apply_patch_loop` 只表示补丁失败后的恢复预算耗尽，不代表根因已确认是模型策略。必须检查会话里的原始补丁、每次 `tool_result` 诊断、目标文件的成功写入和恢复轮次采取的动作；尤其关注前序成功写入是否改变了后续补丁所依赖的上下文，以及运行时是否把目标差异和可执行的修复指引反馈给模型。
 
    涉及部署版本时，核对当前源码与实际构建版本；文件 mtime 只能提供线索，不能证明正在运行的进程包含某项修复。不要依赖这份文档中历史守卫次数或模型推荐来判断当前行为。
 
@@ -80,7 +94,7 @@ category: observability
 
    Shell 预检与安全评估互相独立：恢复提示不能授予权限，原始命令必须继续审计，不静默改写后重跑。
 
-4. **输出结论**。每条 error 一行：时间 + 事件 + 已确认原因或待核对项；然后给「是否已确认当前源码缺陷」和修复建议。明确区分已确认无须修改、证据不足和已确认需要修复，不能把未确认缺陷写成「没有缺陷」。
+5. **输出结论**。每条 error 一行：时间 + 事件 + 已确认原因或待核对项；然后给「是否已确认当前源码缺陷」和修复建议。明确区分已确认无须修改、证据不足和已确认需要修复，不能把未确认缺陷写成「没有缺陷」。
 
 ## 结论模板（照这个格式写给用户）
 

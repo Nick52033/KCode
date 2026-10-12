@@ -1,4 +1,4 @@
-# k-Coder browser tool contract
+# KCode browser tool contract
 
 Use only the browser tools the runtime actually registers, and only after the
 browser session has been enabled in settings.

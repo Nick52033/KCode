@@ -246,9 +246,9 @@ test("knowledge retrieval console searches, expands a citation and records feedb
   await settings.getByRole("button", { name: /^知识库/ }).click();
 
   // 面板本身与挂载时读到的检索事件（验证 list_knowledge_retrieval_events 的契约与字段命名）。
+  await settings.getByRole("tab", { name: /检索验证/ }).click();
   await expect(settings.getByRole("heading", { name: "试搜一下", exact: true })).toBeVisible();
-  await settings.getByRole("navigation", { name: "知识库使用步骤" }).getByRole("button", { name: /试搜验证/ }).click();
-  await expect(settings.getByLabel("知识库检索关键词")).toBeFocused();
+  await expect(settings.getByLabel("知识库检索关键词")).toBeVisible();
   await settings.locator("summary").filter({ hasText: "最近检索" }).click();
   await expect(settings.getByText("最多 6 个切片 · 预算 8%")).toBeVisible();
   await expect(settings.getByText("abc123def456")).toBeVisible();
@@ -488,6 +488,8 @@ test("knowledge graph panel reviews a fact candidate and queries active relation
   await expect(settings).toBeVisible();
   await settings.getByRole("button", { name: /^知识库/ }).click();
 
+  // 关系审核归入「进阶与诊断」分区，展开前不可见。
+  await settings.getByRole("tab", { name: /进阶与诊断/ }).click();
   await expect(settings.getByRole("heading", { name: "关系审核", exact: true })).toBeHidden();
   await settings.locator("summary").filter({ hasText: "关系审核" }).click();
   await expect(settings.getByRole("heading", { name: "关系审核", exact: true })).toBeVisible();

@@ -19,7 +19,7 @@ python -m playwright --version
   the user's behalf without asking, and never install to work around a missing
   interpreter.
 
-If Playwright is unavailable but the k-Coder browser tools are, run the checks
+If Playwright is unavailable but the KCode browser tools are, run the checks
 interactively with those tools instead and record the reduced coverage.
 
 ## 2. Getting the harness into the workspace
@@ -123,7 +123,7 @@ Rules for the script: launch headless Chromium, always close the browser, use
 `role=`/`text=`/stable ids rather than brittle positional selectors, wait
 explicitly, and exit non-zero when an observed error should fail the run.
 Console and `requestfailed` handlers exist here because Playwright provides them;
-they are not available through the k-Coder browser tools.
+they are not available through the KCode browser tools.
 
 ## 6. Reporting
 

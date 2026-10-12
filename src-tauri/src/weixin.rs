@@ -1,6 +1,7 @@
 //! 微信 ClawBot 接入。扫码登录后，微信消息进入已绑定的桌面会话。
 //! 该模块只负责传输和会话路由，Turn 仍统一走 commands::enqueue_message_turn。
 
+use std::future::Future;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -11,14 +12,22 @@ use tauri::{AppHandle, Manager, Wry};
 use tokio_util::sync::CancellationToken;
 
 const ENDPOINT: &str = "https://ilinkai.weixin.qq.com/";
-const BASE_INFO: &str = "{\"channel_version\":\"2.4.9\",\"bot_agent\":\"k-Coder/0.10.0\"}";
+const BASE_INFO: &str = "{\"channel_version\":\"2.4.9\",\"bot_agent\":\"KCode/0.10.0\"}";
+
+fn spawn_restore_task<F>(task: F)
+where
+    F: Future<Output = ()> + Send + 'static,
+{
+    let _ = tauri::async_runtime::handle().spawn(task);
+}
 
 fn official_base(value: &str) -> Result<String, String> {
     let url = url::Url::parse(value).map_err(|_| "微信接口地址无效".to_string())?;
     let host = url.host_str().unwrap_or_default();
     let valid_host = host.ends_with(".weixin.qq.com")
         && host.strip_suffix(".weixin.qq.com").is_some_and(|prefix| {
-            prefix == "ilink"
+            prefix == "ilinkai"
+                || prefix == "ilink"
                 || (prefix.starts_with("ilink-")
                     && prefix[6..]
                         .chars()
@@ -29,7 +38,7 @@ fn official_base(value: &str) -> Result<String, String> {
         || !url.username().is_empty()
         || url.password().is_some()
         || url.port().is_some()
-        || url.path() != "/"
+        || !(url.path().is_empty() || url.path() == "/")
         || url.query().is_some()
         || url.fragment().is_some()
     {
@@ -173,7 +182,7 @@ impl WeixinService {
         }
         let shared = self.inner.clone();
         let account = (token.to_string(), owner.to_string(), base.to_string());
-        tokio::spawn(async move {
+        spawn_restore_task(async move {
             if let Err(error) =
                 run(app, shared.clone(), token_cancel, settings, Some(account)).await
             {
@@ -393,7 +402,7 @@ async fn run(
 
 async fn execute_message(app: &AppHandle<Wry>, thread_id: &str, text: &str) -> String {
     let Some(state) = app.try_state::<crate::app_state::AppState>() else {
-        return "k-Coder 当前不可用".into();
+        return "KCode 当前不可用".into();
     };
     if let Some((command, number, rest)) = parse_numbered_command(text) {
         let Ok(detail) = state.read_thread(thread_id).await else {
@@ -559,4 +568,51 @@ fn parse_numbered_command(text: &str) -> Option<(&str, &str, &str)> {
         return None;
     }
     Some((command, number, parts.next().unwrap_or_default().trim()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::official_base;
+    use std::sync::mpsc;
+    use std::time::Duration;
+
+    #[test]
+    fn accepts_official_protocol_base_urls() {
+        assert_eq!(
+            official_base("https://ilinkai.weixin.qq.com").unwrap(),
+            "https://ilinkai.weixin.qq.com/"
+        );
+        assert_eq!(
+            official_base("https://ilink-eu-1.weixin.qq.com/").unwrap(),
+            "https://ilink-eu-1.weixin.qq.com/"
+        );
+    }
+
+    #[test]
+    fn rejects_untrusted_base_url_shapes() {
+        for value in [
+            "http://ilinkai.weixin.qq.com",
+            "https://evil.weixin.qq.com",
+            "https://ilinkai.weixin.qq.com/ilink",
+            "https://ilinkai.weixin.qq.com/?next=evil",
+            "https://ilinkai.weixin.qq.com/#fragment",
+            "https://user:password@ilinkai.weixin.qq.com",
+            "https://ilinkai.weixin.qq.com:443",
+        ] {
+            assert!(official_base(value).is_err(), "accepted {value}");
+        }
+    }
+
+    #[test]
+    fn startup_restore_task_can_spawn_without_current_tokio_context() {
+        let (sender, receiver) = mpsc::channel();
+
+        super::spawn_restore_task(async move {
+            sender.send(()).expect("startup task should run");
+        });
+
+        receiver
+            .recv_timeout(Duration::from_secs(1))
+            .expect("startup task should be scheduled");
+    }
 }

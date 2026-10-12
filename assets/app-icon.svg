@@ -1,4 +1,26 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <rect width="512" height="512" rx="104" fill="#2F6FE4"/>
-  <path d="M154 112h72v119l104-119h88L298 247l128 153h-91L250 294l-24 27v79h-72V112Z" fill="#fff"/>
+  <defs>
+    <linearGradient id="kcode-bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#1A1A1E"/>
+      <stop offset="0.55" stop-color="#0C0C0E"/>
+      <stop offset="1" stop-color="#000000"/>
+    </linearGradient>
+    <linearGradient id="kcode-glyph" x1="0.18" y1="0" x2="0.85" y2="1">
+      <stop offset="0" stop-color="#FFFFFF"/>
+      <stop offset="0.5" stop-color="#E8E8EF"/>
+      <stop offset="1" stop-color="#A8A8B8"/>
+    </linearGradient>
+    <linearGradient id="kcode-trail" x1="0.1" y1="0.1" x2="0.9" y2="0.9">
+      <stop offset="0" stop-color="#C9C9D6" stop-opacity="0.08"/>
+      <stop offset="0.55" stop-color="#D8D8E2" stop-opacity="0.4"/>
+      <stop offset="1" stop-color="#E8E8EF" stop-opacity="0.6"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="104" fill="url(#kcode-bg)"/>
+  <g fill="none" stroke="url(#kcode-glyph)" stroke-width="66" stroke-linecap="round">
+    <path d="M214 112 C 194 200, 190 266, 204 366"/>
+    <path d="M208 258 C 280 240, 340 196, 392 128"/>
+    <path d="M208 262 C 284 284, 344 326, 400 360"/>
+  </g>
+  <path d="M206 408 C 276 426, 340 418, 396 386" fill="none" stroke="url(#kcode-trail)" stroke-width="26" stroke-linecap="round"/>
 </svg>

@@ -143,8 +143,8 @@ fn generate_self_signed(host: &str) -> Result<GeneratedIdentity, MobileError> {
     let mut params = CertificateParams::new(vec![host.to_string()])
         .map_err(|error| MobileError::internal(format!("invalid certificate host: {error}")))?;
     let mut name = DistinguishedName::new();
-    name.push(DnType::CommonName, "k-Coder Mobile Gateway");
-    name.push(DnType::OrganizationName, "k-Coder");
+    name.push(DnType::CommonName, "KCode Mobile Gateway");
+    name.push(DnType::OrganizationName, "KCode");
     params.distinguished_name = name;
     // 有效期固定在一个有限区间，避免出现「几百年有效期」的自签证书。
     params.not_before = rcgen::date_time_ymd(2025, 1, 1);

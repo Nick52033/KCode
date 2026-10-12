@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Start local servers, wait until they answer, run one command, then stop them.
 
-This harness is maintained inside k-Coder for the `webapp-testing` Skill. It is a
+This harness is maintained inside KCode for the `webapp-testing` Skill. It is a
 local implementation that uses only the Python standard library: it installs
 nothing, downloads nothing, and never reaches a remote host. Readiness is probed
 on loopback addresses only.

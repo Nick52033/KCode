@@ -226,7 +226,7 @@ async fn mobile_page_is_served_without_external_assets() {
         Some("no-store")
     );
     let body = response.text().await.expect("page body");
-    assert!(body.contains("k-Coder"));
+    assert!(body.contains("KCode"));
     assert!(body.contains("pair"), "page must include the pairing flow");
 }
 

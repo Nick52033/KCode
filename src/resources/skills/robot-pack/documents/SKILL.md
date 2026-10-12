@@ -1,6 +1,6 @@
 ---
 name: documents
-description: Create and review Markdown or structured document deliverables within k-Coder's supported capabilities.
+description: Create and review Markdown or structured document deliverables within KCode's supported capabilities.
 triggers: [create document, format markdown, documentation deliverable, export document]
 risk: read
 category: data_documents

@@ -141,19 +141,27 @@ test("knowledge page renders live index progress and metrics", async ({ page }) 
   await page.locator('button[aria-label="设置"]:visible').click();
   await expect(settings).toBeVisible();
   await settings.getByRole("button", { name: /^知识库/ }).click();
-  const guide = settings.getByRole("navigation", { name: "知识库使用步骤" });
-  await expect(guide).toBeVisible();
-  await expect(guide.getByRole("button", { name: /试搜验证/ })).toHaveAttribute("aria-current", "step");
-  await guide.getByRole("button", { name: /创建集合/ }).click();
-  await expect(settings.getByLabel("Collection 名称")).toBeFocused();
-  await guide.getByRole("button", { name: /添加文件/ }).click();
-  await expect(settings.getByRole("button", { name: "选择文件", exact: true })).toBeFocused();
-  await guide.getByRole("button", { name: /试搜验证/ }).click();
-  await expect(settings.getByLabel("知识库检索关键词")).toBeFocused();
+  const tabs = settings.getByRole("tablist", { name: "知识库设置分区" });
+  await expect(tabs).toBeVisible();
+  // 「集合与来源」是默认分区：集合名与添加文件都直接可用，不再有灰色前置步骤。
+  await expect(settings.getByRole("tab", { name: /集合与来源/ })).toHaveAttribute("aria-selected", "true");
+  await expect(settings.getByLabel("Collection 名称")).toBeVisible();
+  await expect(settings.getByRole("button", { name: "选择文件", exact: true }).first()).toBeVisible();
+
+  // 「检索验证」分区只承载检索控制台，可随时进入。
+  await settings.getByRole("tab", { name: /检索验证/ }).click();
+  await expect(settings.getByRole("tab", { name: /检索验证/ })).toHaveAttribute("aria-selected", "true");
+  await expect(settings.getByLabel("知识库检索关键词")).toBeVisible();
+  await expect(settings.getByText("已索引切片")).toBeHidden();
+
+  // 语义检索与运行指标收敛到「进阶与诊断」分区。
+  await settings.getByRole("tab", { name: /进阶与诊断/ }).click();
   await expect(settings.locator("details").filter({ has: page.locator("summary", { hasText: "语义检索" }) })).not.toHaveAttribute("open", "");
   await expect(settings.getByText("已索引切片")).toBeHidden();
   await settings.locator("summary").filter({ hasText: "运行指标" }).click();
   await expect(settings.getByText("已索引切片")).toBeVisible();
+
+  await settings.getByRole("tab", { name: /集合与来源/ }).click();
 
   await page.evaluate(() => {
     const emit = (window as unknown as { emitKnowledgeProgress: (payload: Record<string, unknown>) => void })
@@ -197,9 +205,7 @@ test("knowledge page renders live index progress and metrics", async ({ page }) 
   await settings.getByRole("button", { name: /^外观/ }).click();
   await settings.getByRole("button", { name: /^知识库/ }).click();
   await expect(settings.getByText("先创建一个集合", { exact: true })).toBeVisible();
-  await expect(guide.getByRole("button", { name: /创建集合/ })).toHaveAttribute("aria-current", "step");
-  await expect(guide.getByRole("button", { name: /添加文件/ })).toBeDisabled();
   await expect(settings.getByText("从创建第一个集合开始；本地全文检索无需配置 API Key。")).toBeVisible();
-  await guide.getByRole("button", { name: /创建集合/ }).click();
-  await expect(settings.getByLabel("Collection 名称")).toBeFocused();
+  await settings.getByLabel("Collection 名称").fill("新集合");
+  await expect(settings.getByLabel("Collection 名称")).toHaveValue("新集合");
 });

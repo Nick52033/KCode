@@ -113,6 +113,7 @@ test.beforeEach(async ({ page }) => {
     let callbackId = 1;
     let agentEventCallbackId: number | null = null;
     let mailboxEventCallbackId: number | null = null;
+    let releaseRetry: (() => void) | null = null;
     const localDate = (offsetDays: number) => {
       const date = new Date();
       date.setDate(date.getDate() + offsetDays);
@@ -816,6 +817,11 @@ test.beforeEach(async ({ page }) => {
             };
           }
           if (command === "turn_retry") {
+            if (localStorage.getItem("kcoder_e2e_delay_retry") === "true") {
+              await new Promise<void>((resolve) => {
+                releaseRetry = resolve;
+              });
+            }
             startedTurnCount += 1;
             const threadId = String(args?.threadId ?? "thread-1");
             const turnId = `turn-retry-${startedTurnCount}`;
@@ -1224,6 +1230,10 @@ test.beforeEach(async ({ page }) => {
       __TAURI_EVENT_PLUGIN_INTERNALS__: { unregisterListener: () => undefined },
       __invoked: [],
       __invocationArgs: invocationArgs,
+      __releaseRetry: () => {
+        releaseRetry?.();
+        releaseRetry = null;
+      },
       __ptyStartRequests: ptyStartRequests,
       __ptyWrites: ptyWrites,
       __ptyWriteMetrics: ptyWriteMetrics,
@@ -5745,6 +5755,36 @@ test("presents a failed turn as one actionable error disclosure", async ({ page 
   ).__invoked.filter((command) => command === "turn_retry").length)).toBe(1);
 });
 
+test("shows retry progress before the retry IPC returns", async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem("kcoder_e2e_delay_retry", "true"));
+  await page.goto("/");
+  await page.evaluate(() => {
+    const emit = (window as unknown as { __emitAgentEvent: (event: unknown) => void }).__emitAgentEvent;
+    const base = { schemaVersion: 1, threadId: "thread-1", turnId: "turn-retry-pending" };
+    emit({ ...base, type: "turn_started", phase: "exploring" });
+    emit({
+      ...base,
+      type: "turn_failed",
+      phase: "failed",
+      message: "provider failed",
+      startedAtMs: 1_000,
+      completedAtMs: 5_600,
+      durationMs: 4_600,
+    });
+  });
+
+  const failedExecution = page.locator(".message--assistant").last().locator(".turn-execution--failed");
+  await failedExecution.locator(":scope > summary").click();
+  await failedExecution.getByRole("button", { name: /重试|继续当前步骤/ }).click();
+
+  await expect(page.locator(".turn-waiting")).toContainText("正在理解你的请求");
+  await expect.poll(() => page.evaluate(() => (
+    window as unknown as { __invoked: string[] }
+  ).__invoked.filter((command) => command === "turn_retry").length)).toBe(1);
+
+  await page.evaluate(() => (window as unknown as { __releaseRetry?: () => void }).__releaseRetry?.());
+});
+
 test("labels the provider call hard limit and starts a new Turn", async ({ page }) => {
   await page.addInitScript(() => localStorage.setItem("kcoder_e2e_hold_retry", "true"));
   await page.goto("/");
@@ -5860,7 +5900,7 @@ test("keeps retry attempts in one assistant reply before and after recovery", as
 
   const liveGroup = page.locator(".message--retry-group");
   await expect(liveGroup).toHaveCount(1);
-  await expect(liveGroup.locator(".message-role")).toHaveText("k-Coder");
+  await expect(liveGroup.locator(".message-role")).toHaveText("KCode");
   await expect(liveGroup.locator(".message-retry-attempt")).toHaveCount(2);
   await expect(page.locator(".message--assistant .message-role")).toHaveCount(1);
   await expect(liveGroup.getByText("继续检查并修复。", { exact: true })).toBeVisible();
@@ -5887,7 +5927,7 @@ test("keeps retry attempts in one assistant reply before and after recovery", as
 
   const restoredGroup = page.locator(".message--retry-group");
   await expect(restoredGroup).toHaveCount(1);
-  await expect(restoredGroup.locator(".message-role")).toHaveText("k-Coder");
+  await expect(restoredGroup.locator(".message-role")).toHaveText("KCode");
   await expect(restoredGroup.locator(".message-retry-attempt")).toHaveCount(2);
   await expect(page.locator(".message--assistant .message-role")).toHaveCount(1);
   await expect(restoredGroup.getByText("问题已经修复。", { exact: true })).toBeVisible();
@@ -6771,7 +6811,7 @@ test("switches the runtime approval mode from the composer", async ({ page }, te
   await expect(page.locator(".turn-event-step--approval_requested")).toHaveCount(0);
   await expect(page.getByText("已自动批准操作", { exact: true })).toHaveCount(0);
   await expect(page.locator(".message--approval")).toHaveCount(0);
-  await expect(page.locator(".message-role").getByText("k-Coder", { exact: true })).toHaveCount(1);
+  await expect(page.locator(".message-role").getByText("KCode", { exact: true })).toHaveCount(1);
   await trigger.click();
   await expect(menu.getByRole("menuitemradio", { name: /完整访问/ })).toHaveAttribute("aria-checked", "true");
   await expectMenuWithinComposer();
@@ -7331,6 +7371,71 @@ test("hydrates the unified thread item page and loads older turns", async ({ pag
     sortDirection: "desc",
     itemsView: "full",
   });
+});
+
+test("keeps line breaks in a restored user message", async ({ page }, testInfo) => {
+  const userText = "1、logo 改成黑色酷炫风格\n2、设置-知识库\n3、点击哪个才出现对应内容";
+  await page.addInitScript(() => {
+    const text = new URLSearchParams(location.search).get("text");
+    const item = (
+      id: string,
+      role: "user" | "assistant",
+      content: string,
+      createdAtMs: number,
+    ) => ({
+      schemaVersion: 1,
+      id,
+      turnId: "turn-breaks",
+      status: "completed",
+      startedAtMs: createdAtMs,
+      completedAtMs: createdAtMs,
+      timelineItems: role === "assistant" ? [{ type: "text", id, turnId: "turn-breaks", text: content }] : [],
+      type: role === "user" ? "user_message" : "agent_message",
+      message: { schemaVersion: 1, id, role, content: [{ type: "text", text: content }], createdAtMs },
+      ...(role === "assistant" ? { phase: "final_answer" } : {}),
+    });
+    localStorage.setItem("kcoder_e2e_thread_history", JSON.stringify({
+      schemaVersion: 1,
+      summary: {
+        schemaVersion: 1,
+        id: "thread-1",
+        title: "Phase 6 workbench",
+        createdAtMs: 1,
+        updatedAtMs: 300,
+        archived: false,
+        workspacePath: "D:\\code\\k-coder",
+      },
+      lastTurn: { turnId: "turn-breaks", state: "completed", error: null },
+      todos: [],
+      lastUsage: null,
+      turns: {
+        data: [{
+          schemaVersion: 1,
+          id: "turn-breaks",
+          userMessageId: "breaks-user",
+          state: "completed",
+          error: null,
+          startedAtMs: 2,
+          completedAtMs: 12,
+          durationMs: 10,
+          itemsView: "full",
+          items: [item("breaks-user", "user", text ?? "1、第一项", 2), item("breaks-answer", "assistant", "好的", 12)],
+        }],
+        nextCursor: null,
+        backwardsCursor: null,
+      },
+      unscopedItems: [],
+    }));
+  });
+  await page.goto(`/?text=${encodeURIComponent(userText)}`);
+
+  const bubble = page.locator(".message--user .message-content");
+  await expect(bubble).toHaveCount(1);
+  // Markdown would fold the single newlines into spaces; the user bubble must not.
+  await expect(bubble.locator("br")).toHaveCount(2);
+  await expect(bubble).toContainText("1、logo 改成黑色酷炫风格");
+  await expect(bubble).toContainText("3、点击哪个才出现对应内容");
+  await page.screenshot({ path: testInfo.outputPath("user-message-line-breaks.png"), fullPage: true });
 });
 
 test("renders a recovered assistant item only once when its turn comes from the timeline", async ({ page }) => {

@@ -1,5 +1,6 @@
 import argparse
 import contextlib
+import datetime
 import io
 import json
 from pathlib import Path
@@ -117,6 +118,29 @@ class ClassificationTests(unittest.TestCase):
         ))
         self.assertEqual(rule["id"], "N14")
 
+    def test_apply_patch_loop_requires_session_level_root_cause_review(self):
+        record = {
+            "level": "error",
+            "event": "turn_failed",
+            "fields": {
+                "message": (
+                    "apply_patch_loop: apply_patch failed for e2e/workbench.spec.ts; "
+                    "the last patch conflict matched 0 locations"
+                ),
+                "threadId": "fixture-thread",
+            },
+        }
+        rule, _ = triage.classify_record_with_observations(record)
+        self.assertEqual(rule["id"], "N5")
+        self.assertEqual(rule["verdict"], "review")
+
+    def test_successful_recovery_is_not_classified_as_apply_patch_loop(self):
+        rule, _ = triage.classify_record_with_observations(
+            failure("patch conflicts with the workspace: hunk matched 0 locations")
+        )
+        self.assertEqual(rule["id"], "N4")
+        self.assertEqual(rule["verdict"], "not-bug")
+
     def test_recovery_hint_cannot_mask_real_test_failure(self):
         output = (
             "PowerShell 将原生 stderr 呈现为错误记录。保留真实退出码。\n"
@@ -233,6 +257,164 @@ class SessionTests(unittest.TestCase):
             self.assertIn("待人工判定：2 条", text)
             self.assertNotIn("没有需要修复的产品缺陷", text)
             self.assertNotIn("伴随缺陷", text)
+
+    def test_cli_classify_separates_unmatched_errors_by_event_and_tool(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory, "runtime.jsonl")
+            records = [
+                {
+                    "level": "error",
+                    "event": "tool_failed",
+                    "timestampMs": 1000,
+                    "fields": {
+                        "tool": "browser_navigate",
+                        "output": "Browser process exited with status 21",
+                    },
+                },
+                {
+                    "level": "error",
+                    "event": "tool_failed",
+                    "timestampMs": 2000,
+                    "fields": {
+                        "tool": "update_plan",
+                        "output": "plan may contain at most one active step",
+                    },
+                },
+            ]
+            path.write_text(
+                "\n".join(json.dumps(record) for record in records) + "\n",
+                encoding="utf-8",
+            )
+            output = io.StringIO()
+            with patch.object(triage, "LOG_PATH", str(path)), contextlib.redirect_stdout(output):
+                code = triage.cmd_classify(
+                    argparse.Namespace(all=True, minutes=1440, verbose=False)
+                )
+
+            self.assertEqual(code, 0)
+            text = output.getvalue()
+            self.assertIn("待人工判定：2 类 / 2 条", text)
+            self.assertIn("tool_failed / browser_navigate", text)
+            self.assertIn("tool_failed / update_plan", text)
+
+
+class RuntimeRootTests(unittest.TestCase):
+    def test_apply_paths_resolves_root_and_log_path(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory, "runtime-data")
+            Path(root, "logs").mkdir(parents=True)
+            Path(root, "sessions").mkdir()
+            log = root / "logs" / "runtime.jsonl"
+            log.write_text("", encoding="utf-8")
+
+            triage.apply_paths(argparse.Namespace(runtime_root=str(root), log_path=None))
+            self.assertEqual(triage.LOG_PATH, str(log))
+            self.assertEqual(triage.SESSION_DIR, str(root / "sessions"))
+            self.assertEqual(triage.RUNTIME_ROOT, str(root))
+
+            other = Path(directory, "elsewhere.jsonl")
+            other.write_text("", encoding="utf-8")
+            triage.apply_paths(argparse.Namespace(runtime_root=None, log_path=str(other)))
+            self.assertEqual(triage.LOG_PATH, str(other))
+            self.assertIsNone(triage.SESSION_DIR)
+            self.assertEqual(triage.RUNTIME_ROOT, directory)
+
+            standard = Path(directory, "std", "logs", "runtime.jsonl")
+            standard.parent.mkdir(parents=True)
+            standard.write_text("", encoding="utf-8")
+            triage.apply_paths(argparse.Namespace(runtime_root=None, log_path=str(standard)))
+            self.assertEqual(triage.SESSION_DIR, str(Path(directory, "std", "sessions")))
+            self.assertEqual(triage.RUNTIME_ROOT, str(Path(directory, "std")))
+
+            triage.LOG_PATH = triage.DEFAULT_LOG_PATH
+            triage.SESSION_DIR = triage.DEFAULT_SESSION_DIR
+            triage.RUNTIME_ROOT = triage.DEFAULT_RUNTIME_ROOT
+
+    def test_apply_paths_rejects_missing_directory(self):
+        with tempfile.TemporaryDirectory() as directory:
+            missing = str(Path(directory, "absent"))
+            with contextlib.redirect_stderr(io.StringIO()):
+                with self.assertRaises(SystemExit) as caught:
+                    triage.apply_paths(argparse.Namespace(runtime_root=missing, log_path=None))
+            self.assertEqual(caught.exception.code, 2)
+            self.assertEqual(triage.LOG_PATH, triage.DEFAULT_LOG_PATH)
+
+    def test_apply_paths_rejects_missing_log_file(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory, "runtime-data")
+            root.mkdir()
+            with contextlib.redirect_stderr(io.StringIO()):
+                with self.assertRaises(SystemExit) as caught:
+                    triage.apply_paths(argparse.Namespace(
+                        runtime_root=str(root), log_path=None,
+                    ))
+            self.assertEqual(caught.exception.code, 2)
+            self.assertEqual(triage.LOG_PATH, triage.DEFAULT_LOG_PATH)
+            self.assertEqual(triage.SESSION_DIR, triage.DEFAULT_SESSION_DIR)
+            self.assertEqual(triage.RUNTIME_ROOT, triage.DEFAULT_RUNTIME_ROOT)
+
+    def test_session_path_requires_root_when_layout_is_nonstandard(self):
+        with tempfile.TemporaryDirectory() as directory:
+            log = Path(directory, "runtime.jsonl")
+            log.write_text("", encoding="utf-8")
+            triage.apply_paths(argparse.Namespace(runtime_root=None, log_path=str(log)))
+            self.assertIsNone(triage.SESSION_DIR)
+            self.assertIsNone(triage.session_path("t1"))
+
+            triage.LOG_PATH = triage.DEFAULT_LOG_PATH
+            triage.SESSION_DIR = triage.DEFAULT_SESSION_DIR
+            triage.RUNTIME_ROOT = triage.DEFAULT_RUNTIME_ROOT
+
+    def test_cli_errors_tolerates_bom_and_reports_bad_lines(self):
+        with tempfile.TemporaryDirectory() as directory:
+            now_ms = int(datetime.datetime.now().timestamp() * 1000)
+            root = Path(directory, "runtime-data")
+            (root / "logs").mkdir(parents=True)
+            # utf-8-sig：模拟 PowerShell Set-Content -Encoding utf8 写出的带 BOM 文件
+            (root / "logs" / "runtime.jsonl").write_text(
+                json.dumps({
+                    "level": "error", "event": "tool_failed", "timestampMs": now_ms,
+                    "fields": {"threadId": "t1", "output": "boom"},
+                }) + "\ntruncated-line\n",
+                encoding="utf-8-sig",
+            )
+            output = io.StringIO()
+            with patch.object(triage, "LOG_PATH", str(root / "logs" / "runtime.jsonl")), \
+                 patch.object(triage, "SESSION_DIR", str(root / "sessions")), \
+                 contextlib.redirect_stdout(output):
+                code = triage.cmd_errors(argparse.Namespace(minutes=30, verbose=False))
+            self.assertEqual(code, 0)
+            text = output.getvalue()
+            self.assertIn("thread t1", text)
+            self.assertIn("1 行无法解析", text)
+
+    def test_cli_errors_honours_runtime_root(self):
+        with tempfile.TemporaryDirectory() as directory:
+            now_ms = int(datetime.datetime.now().timestamp() * 1000)
+            root = Path(directory, "runtime-data")
+            sessions = root / "sessions"
+            sessions.mkdir(parents=True)
+            (root / "logs").mkdir()
+            (root / "logs" / "runtime.jsonl").write_text(
+                json.dumps({
+                    "level": "error", "event": "tool_failed", "timestampMs": now_ms,
+                    "fields": {"threadId": "t1", "output": "boom"},
+                }) + "\n",
+                encoding="utf-8",
+            )
+            Path(sessions, "t1.jsonl").write_text(
+                json.dumps({"type": "user_message", "createdAtMs": now_ms - 60_000,
+                            "data": {"message": {"content": []}}}) + "\n",
+                encoding="utf-8",
+            )
+            output = io.StringIO()
+            with patch.object(triage, "LOG_PATH", str(root / "logs" / "runtime.jsonl")), \
+                 patch.object(triage, "SESSION_DIR", str(sessions)), \
+                 contextlib.redirect_stdout(output):
+                code = triage.cmd_errors(argparse.Namespace(minutes=30, verbose=False))
+            self.assertEqual(code, 0)
+            self.assertIn("thread t1", output.getvalue())
+            self.assertIn("会话最近活跃", output.getvalue())
 
 
 if __name__ == "__main__":

@@ -404,6 +404,12 @@ export function isProviderCallLimitError(error: TurnErrorValue | null | undefine
   return typeof error === "object" && error?.code === "provider_call_limit_exceeded";
 }
 
+/** A loop-protection stop is recoverable work-state, not a product failure. */
+export function isNoProgressGuardError(error: TurnErrorValue | null | undefined): boolean {
+  if (typeof error === "object") return error?.code === "no_progress_guard";
+  return typeof error === "string" && (error.includes("无实质进展") || error.includes("无进展"));
+}
+
 export interface TurnSnapshot {
   turnId: string;
   state: TurnState;

@@ -522,7 +522,7 @@ pub fn build_maintenance_prompt(
     };
     format!(
         r#"<memory_maintenance>
-你是 k-Coder 的后台记忆维护组件，当前时间戳为 {now_ms} 毫秒。
+你是 KCode 的后台记忆维护组件，当前时间戳为 {now_ms} 毫秒。
 你没有工具：不能读取文件、不能执行命令、不能访问网络，也不能要求宿主执行任何操作。
 你只能基于下面给出的信息，提出最多 {max_proposals} 条候选记忆操作。
 

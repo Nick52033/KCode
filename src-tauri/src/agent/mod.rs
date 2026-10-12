@@ -63,6 +63,13 @@ const MAX_IDENTICAL_TOOL_CALLS: usize = 2;
 const MAX_TOOL_FAILURE_OUTPUT_BYTES: usize = 4 * 1024;
 const PROGRESS_CHECK_WINDOW: usize = 5;
 const MAX_NO_PROGRESS_WINDOWS: usize = 3;
+/// Stop a Turn that keeps producing new observations but never advances the work.
+/// This is cumulative across soft continuations and context compactions.
+const MAX_PROVIDER_CALLS_WITHOUT_PRODUCTIVE_PROGRESS: u32 = 20;
+const MAX_TOOL_CALLS_WITHOUT_PRODUCTIVE_PROGRESS: u32 = 40;
+const MAX_PROVIDER_CALLS_BEFORE_PROGRESS_NUDGE: u32 = 6;
+const MAX_TOOL_CALLS_BEFORE_PROGRESS_NUDGE: u32 = 12;
+const PRODUCTIVE_PROGRESS_NUDGE: &str = "[进展提醒]\n最近多轮调用新增了观察记录，但没有推进计划或工作区变更。不要重复汇报计划状态或重复检查已确认的事实；从剩余工作中选一个具体动作并继续执行。如果现有信息足够，就开始实施并做针对性验证；如果有明确阻塞，简洁说明阻塞原因与缺少的条件后结束本轮。\n";
 /// Allow a model a couple of chances to repair one patch problem, then stop
 /// instead of spending the rest of a Turn rereading files and producing more
 /// variants of the same invalid patch.
@@ -102,8 +109,8 @@ pub const DEFAULT_SOFT_TURN_TOTAL_TOKENS: u64 = 15_000_000;
 pub const DEFAULT_SOFT_TURN_DURATION_MS: Option<u64> = None;
 /// A hard cumulative cap prevents repeated continuation approvals from turning one
 /// Turn into an unbounded model/tool loop. ZCode 的普通 Turn 不设调用次数硬上限，
-/// loop 边界完全由上下文自动压缩与无进展检测承担；k-Coder 保留该背扑但放宽到 10 个
-/// 软额度段，让真实边界仍是「每段人工续跑确认 + 无进展检测 + 自动压缩」。
+/// k-Coder 保留该背扑但放宽到 10 个软额度段；上下文自动压缩、无变化快照检测和
+/// 跨软段累计的无实质进展熔断共同限制循环。
 pub const DEFAULT_HARD_TURN_PROVIDER_CALLS: u32 = 3_000;
 
 const TURN_CONTINUATION_TOOL_CALL_ID: &str = "runtime-turn-continuation";
@@ -194,14 +201,16 @@ enum TurnContinuationDecision {
     Stop,
 }
 
-/// 进展快照：用于检测任务是否有实质性进展
+/// 观察快照：区分新工作区事实/工具观察与完全重复的空转。
 #[derive(Clone, PartialEq, Eq)]
 struct ProgressSnapshot {
-    /// 已观察到的不同文件内容变更和成功工具结果。
+    /// 从持久化事件重建的工作区变更和观察指纹。
     progress_fingerprints: HashSet<u64>,
 }
 
 impl ProgressSnapshot {
+    /// Include newly observed facts so exploration can continue; the separate
+    /// productive-progress tracker imposes the longer limit on unproductive loops.
     fn from_events(events: &[StoredEvent]) -> Self {
         let mut progress_fingerprints = HashSet::new();
         let mut reads = ReadObservationTracker::default();
@@ -262,11 +271,237 @@ impl ProgressSnapshot {
     }
 }
 
+#[derive(Default)]
+struct ProductiveProgressTracker {
+    last_progress_provider_call: u32,
+    last_progress_tool_call: u32,
+    completed_plan_steps: usize,
+    workspace_revision: u64,
+    productive_command_results: HashSet<u64>,
+    progress_nudge_sent: bool,
+}
+
+impl ProductiveProgressTracker {
+    fn mark_progress(&mut self, provider_call_count: u32, tool_call_count: u32) {
+        self.last_progress_provider_call = provider_call_count;
+        self.last_progress_tool_call = tool_call_count;
+        self.progress_nudge_sent = false;
+    }
+
+    fn should_send_progress_nudge(
+        &mut self,
+        provider_call_count: u32,
+        tool_call_count: u32,
+    ) -> bool {
+        if self.progress_nudge_sent {
+            return false;
+        }
+        let stalled_provider_calls =
+            provider_call_count.saturating_sub(self.last_progress_provider_call);
+        let stalled_tool_calls = tool_call_count.saturating_sub(self.last_progress_tool_call);
+        if stalled_provider_calls >= MAX_PROVIDER_CALLS_BEFORE_PROGRESS_NUDGE
+            || stalled_tool_calls >= MAX_TOOL_CALLS_BEFORE_PROGRESS_NUDGE
+        {
+            self.progress_nudge_sent = true;
+            return true;
+        }
+        false
+    }
+
+    fn observe_tool_result(
+        &mut self,
+        provider_call_count: u32,
+        tool_call_count: u32,
+        call: &ToolCall,
+        result: &ToolResult,
+    ) -> bool {
+        let mut workspace_changed = false;
+        let productive = match call.name.as_str() {
+            _ if is_read_only_observation_tool(&call.name) => false,
+            "run_command" => {
+                let Some(signature) =
+                    productive_command_signature(call, result, self.workspace_revision)
+                else {
+                    return false;
+                };
+                self.productive_command_results.insert(signature)
+            }
+            "update_plan" => {
+                if !result.success {
+                    return false;
+                }
+                let Some(completed_steps) = completed_plan_step_count(call) else {
+                    return false;
+                };
+                if completed_steps <= self.completed_plan_steps {
+                    false
+                } else {
+                    self.completed_plan_steps = completed_steps;
+                    true
+                }
+            }
+            "apply_patch" | "write_file" => {
+                workspace_changed = result.success && change_set_has_file_changes(result);
+                workspace_changed
+            }
+            _ => result.success,
+        };
+        if !productive {
+            return false;
+        }
+        if workspace_changed {
+            self.workspace_revision = self.workspace_revision.saturating_add(1);
+        }
+        self.mark_progress(provider_call_count, tool_call_count);
+        true
+    }
+
+    fn failure_reason(&self, provider_call_count: u32, tool_call_count: u32) -> Option<String> {
+        let provider_calls = provider_call_count.saturating_sub(self.last_progress_provider_call);
+        if provider_calls >= MAX_PROVIDER_CALLS_WITHOUT_PRODUCTIVE_PROGRESS {
+            return Some(format!(
+                "连续 {} 次模型请求没有产生实质进展（文件变更、计划步骤完成或新的验证结果），为防止空转已停止本轮。请开启新 Turn 并从当前剩余工作继续。",
+                MAX_PROVIDER_CALLS_WITHOUT_PRODUCTIVE_PROGRESS
+            ));
+        }
+        let tool_calls = tool_call_count.saturating_sub(self.last_progress_tool_call);
+        if tool_calls >= MAX_TOOL_CALLS_WITHOUT_PRODUCTIVE_PROGRESS {
+            return Some(format!(
+                "连续 {} 次工具调用没有产生实质进展（文件变更、计划步骤完成或新的验证结果），为防止空转已停止本轮。请开启新 Turn 并从当前剩余工作继续。",
+                MAX_TOOL_CALLS_WITHOUT_PRODUCTIVE_PROGRESS
+            ));
+        }
+        None
+    }
+}
+
+fn is_read_only_observation_tool(name: &str) -> bool {
+    matches!(
+        name,
+        "read_file"
+            | "list_directory"
+            | "search_repository"
+            | "recall_memory"
+            | "browser_snapshot"
+            | "browser_screenshot"
+    ) || name.starts_with("read_")
+        || name.starts_with("list_")
+        || name.starts_with("search_")
+        || name.starts_with("get_")
+}
+
+fn change_set_has_file_changes(result: &ToolResult) -> bool {
+    result
+        .metadata
+        .get("changeSet")
+        .and_then(|change_set| change_set.get("files"))
+        .and_then(Value::as_array)
+        .is_some_and(|files| !files.is_empty())
+}
+
+/// 语义上正常的工具结果，不应计入失败埋点。
+///
+/// `run_command` 检索类命令（rg）在没有匹配时以退出码 1 结束，工具层已把它
+/// 识别为 `no_matches` / `bounded_output` 并显式放进 `metadata.resultKind`。
+/// 这类结果对模型是无匹配的有效观察，不是功能失败，因此不写入 `tool_failed`
+/// 错误日志；真实失败（退出码 2、stderr 报错、解析错误）仍会照常埋点。
+///
+/// `invalid_command` 是执行前的预防性拦截（命令未执行，附带回退提示），
+/// 同样不是功能失败，不应让用户在执行中感到「出错了」。
+fn is_expected_tool_outcome(result: &ToolResult) -> bool {
+    matches!(
+        result.metadata.get("resultKind").and_then(Value::as_str),
+        Some("no_matches" | "bounded_output" | "invalid_command")
+    )
+}
+
+fn completed_plan_step_count(call: &ToolCall) -> Option<usize> {
+    let steps = call.arguments.get("steps")?.as_array()?;
+    Some(
+        steps
+            .iter()
+            .filter(|step| step.get("status").and_then(Value::as_str) == Some("completed"))
+            .count(),
+    )
+}
+
+fn productive_command_signature(
+    call: &ToolCall,
+    result: &ToolResult,
+    workspace_revision: u64,
+) -> Option<u64> {
+    let Some(command) = call.arguments.get("command").and_then(Value::as_str) else {
+        return None;
+    };
+    let command = command.to_ascii_lowercase();
+    const VERIFICATION_MARKERS: &[&str] = &[
+        "cargo test",
+        "cargo check",
+        "cargo fmt",
+        "cargo clippy",
+        "pnpm build",
+        "pnpm test",
+        "pnpm exec playwright",
+        "npm test",
+        "npx playwright",
+        "vitest",
+        "pytest",
+        "ruff check",
+        "eslint",
+        "tsc --",
+    ];
+    const MUTATION_MARKERS: &[&str] = &[
+        "set-content",
+        "add-content",
+        "out-file",
+        "writealltext",
+        "writeallbytes",
+        "appendalltext",
+        "remove-item",
+        "new-item",
+        "move-item",
+        "copy-item",
+        "rename-item",
+        "touch ",
+        "rm ",
+        "mv ",
+        "cp ",
+        "mkdir ",
+        "rmdir ",
+        "git apply",
+        "git checkout",
+        "git restore",
+        "git reset",
+        "git commit",
+        "git push",
+        "sed -i",
+        "perl -pi",
+        " tee ",
+    ];
+    let is_verification = VERIFICATION_MARKERS
+        .iter()
+        .any(|marker| command.contains(marker));
+    let may_mutate_workspace = MUTATION_MARKERS
+        .iter()
+        .any(|marker| command.contains(marker));
+    let command_completed = result.success || result.metadata.get("exitCode").is_some();
+    if !command_completed || (!is_verification && !may_mutate_workspace) {
+        return None;
+    }
+    let mut hasher = DefaultHasher::new();
+    workspace_revision.hash(&mut hasher);
+    command.hash(&mut hasher);
+    result.metadata.get("exitCode").hash(&mut hasher);
+    Some(hasher.finish())
+}
+
 #[derive(Debug, Default)]
 struct ApplyPatchFailureTracker {
     signature: Option<String>,
     count: usize,
     permanent: bool,
+    target: Option<String>,
+    diagnostic: Option<String>,
 }
 
 impl ApplyPatchFailureTracker {
@@ -279,6 +514,15 @@ impl ApplyPatchFailureTracker {
             self.count = 1;
             self.permanent = apply_patch_failure_is_permanent(result);
         }
+        self.target = Some(apply_patch_target_label(call));
+        self.diagnostic = result.output.lines().next().map(|line| {
+            line.split("; current context")
+                .next()
+                .unwrap_or(line)
+                .chars()
+                .take(512)
+                .collect()
+        });
         self.count
     }
 
@@ -286,6 +530,8 @@ impl ApplyPatchFailureTracker {
         self.signature = None;
         self.count = 0;
         self.permanent = false;
+        self.target = None;
+        self.diagnostic = None;
     }
 
     fn is_active(&self) -> bool {
@@ -294,6 +540,14 @@ impl ApplyPatchFailureTracker {
 
     fn is_permanent(&self) -> bool {
         self.permanent
+    }
+
+    fn target(&self) -> &str {
+        self.target.as_deref().unwrap_or("<unknown target>")
+    }
+
+    fn diagnostic(&self) -> &str {
+        self.diagnostic.as_deref().unwrap_or("apply_patch failed")
     }
 }
 
@@ -344,7 +598,19 @@ fn apply_patch_targets(patch: &str) -> Vec<String> {
 
 fn repeated_apply_patch_guidance(count: usize) -> String {
     format!(
-        "\n\n[apply_patch recovery] This patch failure has repeated {count} times for the same error class and target. Do not resend the same patch shape. Re-read the exact target region, then rebuild the smallest valid patch; every Update File needs an @@ hunk and every hunk needs a + addition or - removal."
+        "\n\n[apply_patch recovery] This patch failure has repeated {count} times for the same error class and target. Do not resend the same patch shape. Re-read the exact target region, then rebuild the smallest valid patch; preserve indentation and whitespace exactly. If the diagnostic says 0 matches, rebuild the hunk from current lines; if it says multiple matches, add surrounding context until only one location matches. Every Update File needs an @@ hunk and every hunk needs a + addition or - removal. If an earlier successful patch already inserted a line that the old patch marked with '+', keep that line as current context and patch only the remaining change."
+    )
+}
+
+fn first_apply_patch_recovery_guidance() -> &'static str {
+    "\n\n[apply_patch recovery] The workspace did not accept this patch. Re-read the exact target region before retrying and preserve indentation and whitespace exactly. If the diagnostic says 0 matches, rebuild the hunk from current lines; if it says multiple matches, add surrounding context until only one location matches. If an earlier successful patch already inserted a line that this patch marked with '+', keep that line as current context and patch only the remaining change; do not resend this patch unchanged."
+}
+
+fn active_apply_patch_recovery_instructions(tracker: &ApplyPatchFailureTracker) -> String {
+    format!(
+        "\n\n[apply_patch recovery active] The previous apply_patch did not modify the workspace. Before another write, read the exact target region and construct a new minimal patch. Do not resend the failed patch. Preserve indentation and whitespace exactly; for 0 matches, rebuild from current lines, and for multiple matches, add surrounding context until the hunk is unique. A line previously added by a successful patch is now existing context, even if it was written with '+'. Target: {}. Latest diagnostic: {}\n",
+        tracker.target(),
+        tracker.diagnostic(),
     )
 }
 
@@ -1021,6 +1287,9 @@ impl AgentRuntime {
         // 进展检测变量
         let mut no_progress_count = 0usize;
         let mut last_snapshot: Option<ProgressSnapshot> = None;
+        let mut last_productive_provider_call = 0u32;
+        let mut productive_progress = ProductiveProgressTracker::default();
+        let mut tool_call_count = 0u32;
         let mut apply_patch_failures = ApplyPatchFailureTracker::default();
         let mut apply_patch_recovery_rounds = 0usize;
 
@@ -1044,13 +1313,17 @@ impl AgentRuntime {
                 if apply_patch_recovery_rounds >= MAX_APPLY_PATCH_RECOVERY_ROUNDS {
                     let message = if apply_patch_failures.is_permanent() {
                         format!(
-                            "apply_patch_loop: 目标文件超过单文件大小硬上限，连续 {} 个模型轮次仍未能将其降到上限以内并完成写入，已停止了本轮；请先拆分或精简该文件（run_command 可直接编辑），再开启新 Turn 重试。",
-                            MAX_APPLY_PATCH_RECOVERY_ROUNDS
+                            "apply_patch_loop: 目标文件 {} 超过单文件大小硬上限，连续 {} 个模型轮次仍未能将其降到上限以内并完成写入；最后一次诊断：{}。已停止了本轮，请先拆分或精简该文件（run_command 可直接编辑），再开启新 Turn 重试。",
+                            apply_patch_failures.target(),
+                            MAX_APPLY_PATCH_RECOVERY_ROUNDS,
+                            apply_patch_failures.diagnostic(),
                         )
                     } else {
                         format!(
-                            "apply_patch_loop: apply_patch 失败后连续 {} 个模型轮次仍未成功写入，已停止了本轮；请根据最后一次诊断重新读取目标区域并构造一个有效补丁。",
-                            MAX_APPLY_PATCH_RECOVERY_ROUNDS
+                            "apply_patch_loop: apply_patch 失败后连续 {} 个模型轮次仍未成功写入，目标为 {}；最后一次诊断：{}。已停止了本轮，请重新读取目标区域并构造一个有效补丁。",
+                            MAX_APPLY_PATCH_RECOVERY_ROUNDS,
+                            apply_patch_failures.target(),
+                            apply_patch_failures.diagnostic(),
                         )
                     };
                     return self
@@ -1081,6 +1354,19 @@ impl AgentRuntime {
                         ),
                         &publisher,
                     )
+                    .await;
+            }
+            if let Some(message) = productive_progress
+                .failure_reason(provider_call_index, tool_call_count)
+            {
+                publisher.publish(AgentEventEnvelope::new(AgentEvent::TextDelta {
+                    thread_id: thread_id.clone(),
+                    turn_id: turn_id.clone(),
+                    item_id: format!("agent-message-{turn_id}-no-progress"),
+                    delta: format!("\n\n⚠️ {message}\n"),
+                }));
+                return self
+                    .finish_failed(&thread_id, &turn_id, message, &publisher)
                     .await;
             }
             if let (Some(limits), Some(segment)) =
@@ -1116,14 +1402,18 @@ impl AgentRuntime {
             if iteration > 0 && iteration % PROGRESS_CHECK_WINDOW == 0 {
                 let events = self.repository.load(&thread_id).await?;
                 let current_snapshot = ProgressSnapshot::from_events(&events);
+                let current_productive_provider_call =
+                    productive_progress.last_progress_provider_call;
 
                 if let Some(ref last) = last_snapshot {
-                    if current_snapshot == *last {
+                    if current_snapshot == *last
+                        && current_productive_provider_call == last_productive_provider_call
+                    {
                         no_progress_count += 1;
 
                         // 警告：检测到无进展
                         eprintln!(
-                            "[警告] 检测到无进展：连续 {} 个检查窗口（共 {} 轮）没有新的文件修改或工具输出",
+                            "[警告] 检测到无进展：连续 {} 个检查窗口（共 {} 轮）没有新的工作区变更或观察结果",
                             no_progress_count,
                             no_progress_count * PROGRESS_CHECK_WINDOW
                         );
@@ -1162,12 +1452,18 @@ impl AgentRuntime {
                 }
 
                 last_snapshot = Some(current_snapshot);
+                last_productive_provider_call = current_productive_provider_call;
             }
 
             let mut request_runtime_instructions = self
                 .runtime_instruction_provider
                 .compile()
                 .map_err(AgentRuntimeError::RuntimeInstructions)?;
+            if productive_progress
+                .should_send_progress_nudge(provider_call_index, tool_call_count)
+            {
+                request_runtime_instructions.push_str(PRODUCTIVE_PROGRESS_NUDGE);
+            }
             if previous_turn_interrupted {
                 request_runtime_instructions.push_str(instructions::INTERRUPTED_TASK);
             }
@@ -1183,6 +1479,10 @@ impl AgentRuntime {
                     ));
                     request_runtime_instructions.push('\n');
                 }
+            }
+            if apply_patch_failures.is_active() {
+                request_runtime_instructions
+                    .push_str(&active_apply_patch_recovery_instructions(&apply_patch_failures));
             }
             let events = self.repository.load(&thread_id).await?;
             let last_context_usage = last_active_context_usage(&events);
@@ -2303,6 +2603,12 @@ impl AgentRuntime {
             let mut cancelled_batch = false;
             let mut fatal_error = None;
             for call in pending_tool_calls {
+                tool_call_count = tool_call_count.saturating_add(1);
+                if let Some(reason) =
+                    productive_progress.failure_reason(provider_call_index, tool_call_count)
+                {
+                    stop_reason = Some(reason);
+                }
                 let signature = call_signature(&call);
                 if last_call_signature.as_deref() == Some(signature.as_str()) {
                     identical_call_streak = identical_call_streak.saturating_add(1);
@@ -2404,7 +2710,9 @@ impl AgentRuntime {
                     }
                 };
 
-                if is_pending_subagent_wait(&call, &result, tool_started_at.elapsed()) {
+                let pending_subagent_wait =
+                    is_pending_subagent_wait(&call, &result, tool_started_at.elapsed());
+                if pending_subagent_wait {
                     // A bounded blocking wait is legitimate while children do work.
                     // Snapshot polling, finished results and failures retain loop guards.
                     identical_call_streak = 0;
@@ -2425,51 +2733,70 @@ impl AgentRuntime {
                     stop_reason = Some(reason);
                 }
 
-                if call.name == "apply_patch" {
-                    if result.success {
-                        // A successful patch changes the workspace and makes the previous
-                        // failure class stale. Let the model start a fresh repair attempt.
-                        apply_patch_failures.reset();
-                        apply_patch_recovery_rounds = 0;
-                    } else {
-                        let failure_count = apply_patch_failures.observe(&call, &result);
-                        let permanent = apply_patch_failures.is_permanent();
-                        if permanent {
-                            // A per-file size cap blocks every patch shape and full-file
-                            // write, so the generic "rebuild a smaller patch" advice would
-                            // send the model re-measuring a file it cannot touch.
-                            result.output.push_str(&blocked_apply_patch_guidance(
-                                &apply_patch_target_label(&call),
-                            ));
-                        } else if failure_count
-                            == MAX_REPEATED_APPLY_PATCH_FAILURES.saturating_sub(1)
-                        {
-                            result
-                                .output
-                                .push_str(&repeated_apply_patch_guidance(failure_count));
-                        }
-                        if failure_count >= MAX_REPEATED_APPLY_PATCH_FAILURES {
-                            let targets = apply_patch_target_label(&call);
-                            let remedy = if permanent {
-                                "The target is over the hard per-file size cap: split or trim it below the cap (run_command may edit it) before retrying."
-                            } else {
-                                "Re-read the target and construct one valid patch before retrying."
-                            };
-                            let reason = format!(
-                                "apply_patch_loop: the same apply_patch error for {targets} repeated {failure_count} times; stopped this Turn. {remedy}"
-                            );
-                            result.output.push_str(&format!("\n\n{reason}"));
-                            item_status = AgentItemStatus::Failed;
-                            stop_reason = Some(reason);
-                        }
-                        // A recovery note must stay within the same bounded tool-result
-                        // contract as the original diagnostic.
-                        result = bound_tool_result(result);
+                if matches!(call.name.as_str(), "apply_patch" | "write_file")
+                    && result.success
+                {
+                    // Any successful workspace mutation changes the facts behind the failed
+                    // patch. The previous recovery budget is stale, regardless of which write
+                    // tool made the progress.
+                    apply_patch_failures.reset();
+                    apply_patch_recovery_rounds = 0;
+                }
+
+                if call.name == "apply_patch" && !result.success {
+                    let failure_count = apply_patch_failures.observe(&call, &result);
+                    let permanent = apply_patch_failures.is_permanent();
+                    if permanent {
+                        // A per-file size cap blocks every patch shape and full-file
+                        // write, so the generic "rebuild a smaller patch" advice would
+                        // send the model re-measuring a file it cannot touch.
+                        result.output.push_str(&blocked_apply_patch_guidance(
+                            &apply_patch_target_label(&call),
+                        ));
+                    } else if failure_count == MAX_REPEATED_APPLY_PATCH_FAILURES.saturating_sub(1)
+                    {
+                        result
+                            .output
+                            .push_str(&repeated_apply_patch_guidance(failure_count));
+                    } else if failure_count == 1
+                        && result
+                            .output
+                            .to_ascii_lowercase()
+                            .contains("patch conflicts with the workspace")
+                    {
+                        result.output.push_str(first_apply_patch_recovery_guidance());
                     }
+                    if failure_count >= MAX_REPEATED_APPLY_PATCH_FAILURES {
+                        let targets = apply_patch_target_label(&call);
+                        let remedy = if permanent {
+                            "The target is over the hard per-file size cap: split or trim it below the cap (run_command may edit it) before retrying."
+                        } else {
+                            "Re-read the target and construct one valid patch before retrying."
+                        };
+                        let reason = format!(
+                            "apply_patch_loop: the same apply_patch error for {targets} repeated {failure_count} times; last diagnostic: {}. Stopped this Turn. {remedy}",
+                            apply_patch_failures.diagnostic(),
+                        );
+                        result.output.push_str(&format!("\n\n{reason}"));
+                        item_status = AgentItemStatus::Failed;
+                        stop_reason = Some(reason);
+                    }
+                    // A recovery note must stay within the same bounded tool-result
+                    // contract as the original diagnostic.
+                    result = bound_tool_result(result);
                 }
 
                 if call.name == COMPLETE_WORKFLOW_NODE_TOOL_NAME && result.success {
                     read_observations.reset_context();
+                }
+
+                if !pending_subagent_wait {
+                    productive_progress.observe_tool_result(
+                        provider_call_index,
+                        tool_call_count,
+                        &call,
+                        &result,
+                    );
                 }
 
                 if let Some(metrics) = &self.metrics {
@@ -3310,7 +3637,7 @@ impl AgentRuntime {
         status: AgentItemStatus,
         publisher: &Arc<dyn EventPublisher>,
     ) -> Result<(), AgentRuntimeError> {
-        if !result.success {
+        if !result.success && !is_expected_tool_outcome(result) {
             self.record_tool_failure(thread_id, turn_id, call, result, status);
         }
         self.repository
@@ -3531,8 +3858,17 @@ impl AgentRuntime {
     ) -> Result<TurnOutcome, AgentRuntimeError> {
         let message = error.message.clone();
         if let Some(logger) = &self.logger {
+            // A no-progress guard is an intentional safety stop, not an application
+            // fault. Keep the terminal TurnFailed event for recovery semantics, but
+            // record it at info level so expected loop protection does not pollute
+            // the error log or make the user-facing diagnostics look like a bug.
+            let log_level = if error.code == "no_progress_guard" {
+                "info"
+            } else {
+                "error"
+            };
             let _ = logger.log(
-                "error",
+                log_level,
                 "turn_failed",
                 serde_json::json!({
                     "threadId": thread_id,
@@ -3542,6 +3878,7 @@ impl AgentRuntime {
                     "category": error.category,
                     "retryable": error.retryable,
                     "details": error.details.clone(),
+                    "safetyStop": error.code == "no_progress_guard",
                 }),
             );
         }
@@ -7053,7 +7390,9 @@ mod tests {
 
     #[tokio::test]
     async fn no_progress_detection_stops_an_unbounded_failed_tool_loop() {
-        let (_directory, _repository, runtime, thread_id) = runtime_fixture().await;
+        let (directory, _repository, runtime, thread_id) = runtime_fixture().await;
+        let logger = StructuredLogger::new(directory.path()).unwrap();
+        let runtime = runtime.with_logger(logger.clone());
         let mut scripts = (0..21)
             .map(|index| {
                 vec![
@@ -7093,6 +7432,33 @@ mod tests {
 
         assert_eq!(outcome.state, TurnState::Failed);
         assert!(outcome.error.unwrap().contains("无实质进展"));
+
+        let error_logs = logger
+            .read_logs(crate::logging::LogQuery {
+                limit: None,
+                level: Some("error".into()),
+                event: Some("turn_failed".into()),
+                search: None,
+                after_timestamp_ms: None,
+            })
+            .unwrap();
+        assert!(error_logs.records.is_empty());
+
+        let info_logs = logger
+            .read_logs(crate::logging::LogQuery {
+                limit: None,
+                level: Some("info".into()),
+                event: Some("turn_failed".into()),
+                search: None,
+                after_timestamp_ms: None,
+            })
+            .unwrap();
+        assert_eq!(info_logs.records.len(), 1);
+        assert_eq!(
+            info_logs.records[0].fields["errorCode"],
+            "no_progress_guard"
+        );
+        assert_eq!(info_logs.records[0].fields["safetyStop"], true);
     }
 
     #[tokio::test]
@@ -10053,6 +10419,7 @@ mod tests {
         let error = outcome.error.unwrap();
         assert!(error.contains("apply_patch_loop"));
         assert!(error.contains("file.txt"));
+        assert!(error.contains("patch syntax is invalid"));
         assert_eq!(provider.requests().len(), 5);
         let patch_results = repository
             .load(&thread_id)
@@ -10069,6 +10436,109 @@ mod tests {
         assert_eq!(patch_results.len(), 3);
         assert!(patch_results[1].output.contains("[apply_patch recovery]"));
         assert!(patch_results[2].output.contains("apply_patch_loop"));
+    }
+
+    #[tokio::test]
+    async fn reports_last_patch_diagnostic_after_recovery_budget_expires() {
+        let directory = tempfile::tempdir().unwrap();
+        std::fs::write(
+            directory.path().join("file.txt"),
+            (1..=20)
+                .map(|line| match line {
+                    1 => "before".to_string(),
+                    2 => "private current text".to_string(),
+                    _ => format!("line {line}"),
+                })
+                .collect::<Vec<_>>()
+                .join("\n"),
+        )
+        .unwrap();
+        let (repository, runtime, _approvals, thread_id) =
+            editing_runtime(directory.path(), Duration::from_secs(1)).await;
+        let runtime = runtime.with_approval_mode(ApprovalMode::FullAccess);
+        let invalid_patch = "*** Begin Patch\n*** Update File: file.txt\n@@\n-before\n-missing\n+after\n*** End Patch";
+        let read_file = |index: usize| ToolCall {
+            id: format!("read-{index}"),
+            name: "read_file".into(),
+            arguments: json!({
+                "path": "file.txt",
+                "startLine": index + 1,
+                "lineCount": 1,
+            }),
+            metadata: json!({}),
+        };
+        let mut scripts = vec![vec![
+            Ok(ProviderEvent::ToolCall {
+                call: patch_call_with_id("bad-patch", invalid_patch),
+            }),
+            Ok(ProviderEvent::Completed),
+        ]];
+        for index in 0..(MAX_APPLY_PATCH_RECOVERY_ROUNDS + 1) {
+            scripts.push(vec![
+                Ok(ProviderEvent::ToolCall {
+                    call: read_file(index),
+                }),
+                Ok(ProviderEvent::Completed),
+            ]);
+        }
+        let provider = Arc::new(FakeProvider::script(scripts));
+
+        let outcome = runtime
+            .run_turn(
+                provider.clone(),
+                "fake".into(),
+                RunTurnRequest {
+                    thread_id: thread_id.clone(),
+                    input: "repair the file".into(),
+                    agent_mode: None,
+                },
+                CancellationToken::new(),
+                Arc::new(RecordingPublisher::default()),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(outcome.state, TurnState::Failed);
+        let error = outcome.error.unwrap();
+        assert!(error.contains("file.txt"));
+        assert!(error.contains("matched 0 locations"));
+        assert_eq!(
+            provider.requests().len(),
+            MAX_APPLY_PATCH_RECOVERY_ROUNDS + 1
+        );
+        let first_request = &provider.requests()[0];
+        assert!(!first_request.messages.iter().any(|message| matches!(
+            message,
+            ProviderMessage::Text { role: MessageRole::System, text }
+                if text.contains("[apply_patch recovery active]")
+        )));
+        let second_request = &provider.requests()[1];
+        assert!(second_request.messages.iter().any(|message| matches!(
+            message,
+            ProviderMessage::Text { role: MessageRole::System, text }
+                if text.contains("[apply_patch recovery active]")
+                    && text.contains("matched 0 locations")
+        )));
+        let events = repository.load(&thread_id).await.unwrap();
+        let first_failure = events
+            .iter()
+            .find_map(|event| match &event.kind {
+                StoredEventKind::ToolResult { name, result, .. }
+                    if name == "apply_patch" && !result.success =>
+                {
+                    Some(result)
+                }
+                _ => None,
+            })
+            .unwrap();
+        assert!(first_failure.output.contains("no exact match"));
+        assert!(
+            first_failure
+                .output
+                .contains("rebuild the hunk from current lines")
+        );
+        assert!(first_failure.output.contains("[apply_patch recovery]"));
+        assert!(!first_failure.output.contains("private current text"));
     }
 
     #[tokio::test]
@@ -10137,6 +10607,115 @@ mod tests {
             provider.requests().len(),
             MAX_APPLY_PATCH_RECOVERY_ROUNDS + 1
         );
+    }
+
+    #[tokio::test]
+    async fn successful_write_file_resets_patch_recovery_budget() {
+        let directory = tempfile::tempdir().unwrap();
+        std::fs::write(directory.path().join("file.txt"), "before\n").unwrap();
+        std::fs::write(
+            directory.path().join("other.txt"),
+            "one\ntwo\nthree\nfour\nfive\n",
+        )
+        .unwrap();
+        let (repository, runtime, _approvals, thread_id) =
+            editing_runtime(directory.path(), Duration::from_secs(1)).await;
+        let runtime = runtime.with_approval_mode(ApprovalMode::FullAccess);
+        let invalid_patch =
+            "*** Begin Patch\n*** Update File: file.txt\n@@\n context only\n*** End Patch";
+        let final_patch =
+            "*** Begin Patch\n*** Update File: file.txt\n@@\n-after\n+final\n*** End Patch";
+        let read_file = |id: String, start_line: usize| ToolCall {
+            id,
+            name: "read_file".to_string(),
+            arguments: json!({
+                "path": "other.txt",
+                "startLine": start_line,
+                "lineCount": 1,
+            }),
+            metadata: json!({}),
+        };
+        let mut scripts = vec![
+            vec![
+                Ok(ProviderEvent::ToolCall {
+                    call: patch_call_with_id("bad-patch", invalid_patch),
+                }),
+                Ok(ProviderEvent::Completed),
+            ],
+            vec![
+                Ok(ProviderEvent::ToolCall {
+                    call: ToolCall {
+                        id: "write-file".to_string(),
+                        name: "write_file".to_string(),
+                        arguments: json!({
+                            "path": "file.txt",
+                            "content": "after\n",
+                        }),
+                        metadata: json!({}),
+                    },
+                }),
+                Ok(ProviderEvent::Completed),
+            ],
+        ];
+        for index in 0..5 {
+            scripts.push(vec![
+                Ok(ProviderEvent::ToolCall {
+                    call: read_file(format!("read-{index}"), index + 1),
+                }),
+                Ok(ProviderEvent::Completed),
+            ]);
+        }
+        scripts.push(vec![
+            Ok(ProviderEvent::ToolCall {
+                call: patch_call_with_id("final-patch", final_patch),
+            }),
+            Ok(ProviderEvent::Completed),
+        ]);
+        scripts.push(vec![
+            Ok(ProviderEvent::TextDelta {
+                delta: "the file is repaired".to_string(),
+            }),
+            Ok(ProviderEvent::Completed),
+        ]);
+        let script_count = scripts.len();
+        let provider = Arc::new(FakeProvider::script(scripts));
+
+        let outcome = runtime
+            .run_turn(
+                provider.clone(),
+                "fake".to_string(),
+                RunTurnRequest {
+                    thread_id: thread_id.clone(),
+                    input: "repair the file".to_string(),
+                    agent_mode: None,
+                },
+                CancellationToken::new(),
+                Arc::new(RecordingPublisher::default()),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(outcome.state, TurnState::Completed);
+        assert_eq!(
+            std::fs::read_to_string(directory.path().join("file.txt")).unwrap(),
+            "final\n"
+        );
+        assert_eq!(provider.requests().len(), script_count);
+        let failed_patch_results = repository
+            .load(&thread_id)
+            .await
+            .unwrap()
+            .into_iter()
+            .filter_map(|event| match event.kind {
+                StoredEventKind::ToolResult { name, result, .. }
+                    if name == "apply_patch" && !result.success =>
+                {
+                    Some(result)
+                }
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(failed_patch_results.len(), 1);
     }
 
     #[tokio::test]

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""k-coder 桌面端运行时错误排查辅助脚本。
+r"""KCode 桌面端运行时错误排查辅助脚本。
 
 用法（Git Bash 或 PowerShell 均可，python 为 Windows 版）：
   python triage_runtime_errors.py classify [--minutes 1440] [--all] [--verbose]
@@ -18,6 +18,11 @@
 两种日志格式不同，注意别混用字段名：
   runtime.jsonl  每条是 {level, timestampMs, event, fields{...}}
   sessions/*.jsonl 每条是 {type, createdAtMs, data{...}}（schemaVersion 11）
+
+日志位置：默认取 Windows 的 %APPDATA%\com.kcoder.app\runtime-data\。不同电脑路径不同，
+默认位置读不到时先向用户确认，再加 --runtime-root 或 --log-path 覆盖：
+  python triage_runtime_errors.py errors --minutes 30 --runtime-root "D:\\runtime-data"
+  python triage_runtime_errors.py classify --log-path "D:\\runtime-data\\logs\\runtime.jsonl"
 
 规则表与判定口径见 SKILL.md「一键巡检」；新增类别时同步改 RULES 和 SKILL.md，
 避免脚本和文档给出两套结论。
@@ -154,10 +159,10 @@ RULES: list[dict] = [
     },
     {
         "id": "N5",
-        "verdict": "not-bug",
+        "verdict": "review",
         "title": "补丁熔断：连续恢复轮次仍未写入",
-        "detail": "P10-259 有界熔断，根因是模型在超上限文件上反复打补丁，属模型策略问题。",
-        "evidence": "src-tauri/src/agent/mod.rs:1052",
+        "detail": "熔断只说明恢复预算耗尽，不能单凭终态把根因归为模型策略。需检查会话中的完整补丁诊断、目标文件、此前写入结果及失败后模型采取的动作。",
+        "evidence": "session assistant_tool_calls/tool_result 与 turn_failed；src-tauri/src/agent/mod.rs apply_patch recovery guard",
         "match": lambda event, text: "apply_patch_loop" in text,
     },
     {
@@ -362,7 +367,97 @@ RUNTIME_ROOT = os.path.join(
     "runtime-data",
 )
 LOG_PATH = os.path.join(RUNTIME_ROOT, "logs", "runtime.jsonl")
-SESSION_DIR = os.path.join(RUNTIME_ROOT, "sessions")
+SESSION_DIR: str | None = os.path.join(RUNTIME_ROOT, "sessions")
+
+DEFAULT_RUNTIME_ROOT = RUNTIME_ROOT
+DEFAULT_LOG_PATH = LOG_PATH
+DEFAULT_SESSION_DIR = SESSION_DIR
+
+
+def add_common_args(parser: argparse.ArgumentParser) -> None:
+    """日志位置参数：不同电脑的运行时数据目录不一样，默认位置不对时用它们覆盖。"""
+    parser.add_argument(
+        "--runtime-root",
+        metavar="DIR",
+        help="runtime-data 目录（含 logs/ 与 sessions/）。不同电脑位置不同，"
+             "默认位置取不到时应先向用户确认再传",
+    )
+    parser.add_argument(
+        "--log-path",
+        metavar="FILE",
+        help="直接指定 runtime.jsonl 的完整路径，覆盖 --runtime-root 推导",
+    )
+
+
+def apply_paths(args: argparse.Namespace) -> None:
+    """把命令行指定的日志位置写回模块级全局，供各命令读取。"""
+    global RUNTIME_ROOT, LOG_PATH, SESSION_DIR
+
+    root = getattr(args, "runtime_root", None)
+    log_path = getattr(args, "log_path", None)
+    if not root and not log_path:
+        return
+
+    resolved_root = resolved_log = resolved_sessions = None
+    if root:
+        root = os.path.abspath(os.path.expanduser(root))
+        if not os.path.isdir(root):
+            print(f"--runtime-root 不是已存在的目录：{root}", file=sys.stderr)
+            raise SystemExit(2)
+        resolved_root = root
+        resolved_sessions = os.path.join(root, "sessions")
+        resolved_log = (os.path.abspath(os.path.expanduser(log_path)) if log_path
+                        else os.path.join(root, "logs", "runtime.jsonl"))
+    else:
+        resolved_log = os.path.abspath(os.path.expanduser(log_path))
+        logs_dir = os.path.dirname(resolved_log)
+        if os.path.basename(logs_dir).lower() == "logs":
+            # 仅当确实是 <runtime-data>/logs/runtime.jsonl 这种标准布局时才反推，
+            # 否则 session 目录无从得知，交由 cmd_session 明确要求 --runtime-root。
+            resolved_root = os.path.dirname(logs_dir)
+            resolved_sessions = os.path.join(resolved_root, "sessions")
+        else:
+            resolved_root = logs_dir
+            resolved_sessions = None
+    if not os.path.exists(resolved_log):
+        print(f"指定的日志文件不存在：{resolved_log}", file=sys.stderr)
+        raise SystemExit(2)
+
+    # 全部校验通过后再赋值，失败时不留下半改写的全局状态。
+    LOG_PATH = resolved_log
+    RUNTIME_ROOT = resolved_root
+    SESSION_DIR = resolved_sessions
+
+
+def session_path(thread: str) -> str | None:
+    """按当前 SESSION_DIR 拼会话文件路径；未推导出会话目录时给出明确指引。"""
+    if SESSION_DIR is None:
+        print("无法确定 sessions 目录：--log-path 指向的文件不在 <runtime-data>/logs/ 下，"
+              "请改用 --runtime-root 指定 runtime-data 目录。", file=sys.stderr)
+        return None
+    return os.path.join(SESSION_DIR, f"{thread}.jsonl")
+
+
+def open_log(path: str):
+    """打开 runtime.jsonl。
+
+    Windows 上部分编辑器 / PowerShell `Set-Content -Encoding utf8` 会写入 BOM，
+    用 utf-8-sig 读取可同时兼容有无 BOM 的文件。
+    """
+    return open(path, encoding="utf-8-sig")
+
+
+def parse_log_line(line: str) -> dict | None:
+    """解析一行 jsonl；空行与坏行返回 None，由调用方决定是否提示。"""
+    line = line.strip()
+    if not line:
+        return None
+    try:
+        record = json.loads(line)
+    except json.JSONDecodeError:
+        return None
+    return record if isinstance(record, dict) else None
+
 
 # 会话流水里值得看的事件；其余类型对定位失败根因基本是噪声。
 SESSION_EVENTS = {
@@ -405,7 +500,8 @@ def print_group(group: dict, verbose: bool = False) -> None:
         if thread not in threads:
             threads.append(thread)
     tag = "（伴随观察，不重复计入主因）" if group.get("cooccurring") else ""
-    print(f"\n[{rule['id']}]{tag} {rule['title']}  ×{len(records)}")
+    subgroup = f"（{group['subgroup']}）" if group.get("subgroup") else ""
+    print(f"\n[{rule['id']}]{tag} {rule['title']}{subgroup}  ×{len(records)}")
     print(f"    时间：{fmt_time(min(times))} ~ {fmt_time(max(times))}"
           f"   会话：{', '.join(threads[:3])}{' 等' if len(threads) > 3 else ''}")
     sample = clip(record_text(records[0]), 150)
@@ -433,16 +529,13 @@ def cmd_classify(args: argparse.Namespace) -> int:
     total = 0
     outside = 0
     lo_ms = hi_ms = 0
-    with open(LOG_PATH, encoding="utf-8") as handle:
+    bad_lines = 0
+    with open_log(LOG_PATH) as handle:
         for line in handle:
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                record = json.loads(line)
-            except json.JSONDecodeError:
-                continue
-            if not isinstance(record, dict):
+            record = parse_log_line(line)
+            if record is None:
+                if line.strip():
+                    bad_lines += 1
                 continue
             total += 1
             ms = record.get("timestampMs", 0)
@@ -456,6 +549,10 @@ def cmd_classify(args: argparse.Namespace) -> int:
                 outside += 1
                 continue
             records.append(record)
+
+    if bad_lines:
+        print(f"注意：有 {bad_lines} 行无法解析（可能是编码/BOM/截断尾行），已跳过；"
+              "结论只基于成功解析的记录。")
 
     window = (f"全部历史（{fmt_time(lo_ms)} ~ {fmt_time(hi_ms)}）" if args.all
               else f"{fmt_time(cutoff)} ~ {fmt_time(now_ms)}（最近 {args.minutes} 分钟）")
@@ -476,7 +573,18 @@ def cmd_classify(args: argparse.Namespace) -> int:
     for record in records:
         rule, extras = classify_record_with_observations(record)
         classified.append((record, rule, extras))
-        groups.setdefault(rule["id"], {"rule": rule, "records": []})["records"].append(record)
+        group_key = rule["id"]
+        subgroup = None
+        if rule["id"] == UNMATCHED["id"]:
+            fields = as_dict(record.get("fields"))
+            event = str(record.get("event") or "(无事件)")
+            tool = str(fields.get("tool") or "(无工具)")
+            subgroup = f"{event} / {tool}"
+            group_key = f"{group_key}:{subgroup}"
+        group = groups.setdefault(group_key, {"rule": rule, "records": []})
+        group["records"].append(record)
+        if subgroup:
+            group["subgroup"] = subgroup
         for extra in extras:
             observations.setdefault(extra["id"], {"rule": extra, "records": []})["records"].append(record)
 
@@ -544,16 +652,13 @@ def cmd_errors(args: argparse.Namespace) -> int:
 
     errors: list[dict] = []
     cleared_at: int | None = None
-    with open(LOG_PATH, encoding="utf-8") as handle:
+    bad_lines = 0
+    with open_log(LOG_PATH) as handle:
         for line in handle:
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                record = json.loads(line)
-            except json.JSONDecodeError:
-                continue
-            if not isinstance(record, dict):
+            record = parse_log_line(line)
+            if record is None:
+                if line.strip():
+                    bad_lines += 1
                 continue
             if record.get("event") == "logs_cleared":
                 cleared_at = record.get("timestampMs")
@@ -561,6 +666,9 @@ def cmd_errors(args: argparse.Namespace) -> int:
                 continue
             if record.get("timestampMs", 0) >= cutoff:
                 errors.append(record)
+
+    if bad_lines:
+        print(f"注意：有 {bad_lines} 行无法解析（可能是编码/BOM/截断尾行），已跳过。")
 
     print(f"窗口：{fmt_time(cutoff)} ~ {fmt_time(now_ms)}  日志：{LOG_PATH}")
     if not errors:
@@ -576,9 +684,9 @@ def cmd_errors(args: argparse.Namespace) -> int:
         by_thread.setdefault(thread, []).append(record)
 
     for thread, records in sorted(by_thread.items(), key=lambda kv: kv[1][0]["timestampMs"]):
-        session_file = os.path.join(SESSION_DIR, f"{thread}.jsonl")
+        session_file = session_path(thread)
         last_active = ""
-        if os.path.exists(session_file):
+        if session_file is not None and os.path.exists(session_file):
             last_ms = 0
             with open(session_file, encoding="utf-8") as handle:
                 for line in handle:
@@ -605,7 +713,9 @@ def cmd_errors(args: argparse.Namespace) -> int:
 
 
 def cmd_session(args: argparse.Namespace) -> int:
-    path = os.path.join(SESSION_DIR, f"{args.thread}.jsonl")
+    path = session_path(args.thread)
+    if path is None:
+        return 2
     if not os.path.exists(path):
         print(f"会话文件不存在：{path}", file=sys.stderr)
         return 1
@@ -694,6 +804,7 @@ def main() -> int:
     sub = parser.add_subparsers(dest="mode", required=True)
 
     classify = sub.add_parser("classify", help="一键巡检：自动分类 error 记录并给出是否 bug 的结论")
+    add_common_args(classify)
     classify.add_argument("--minutes", type=int, default=1440,
                           help="时间窗（分钟），默认 1440 即 24 小时")
     classify.add_argument("--all", action="store_true", help="扫全部历史，忽略时间窗")
@@ -701,19 +812,26 @@ def main() -> int:
     classify.set_defaults(func=cmd_classify)
 
     errors = sub.add_parser("errors", help="时间窗内的 error 记录，按会话分组")
+    add_common_args(errors)
     errors.add_argument("--minutes", type=int, default=30)
     errors.add_argument("--verbose", action="store_true", help="附带打印 fields 全量字段")
     errors.set_defaults(func=cmd_errors)
 
     session = sub.add_parser("session", help="打印指定会话的压缩时间线")
+    add_common_args(session)
     session.add_argument("--thread", required=True)
     session.add_argument("--since-ms", type=int, default=0,
                          help="只要 createdAtMs >= 该值的事件（epoch 毫秒）")
     session.set_defaults(func=cmd_session)
 
     args = parser.parse_args()
+    apply_paths(args)
     if not os.path.exists(LOG_PATH):
         print(f"找不到运行时日志：{LOG_PATH}", file=sys.stderr)
+        print(f"（默认位置：{DEFAULT_LOG_PATH}）", file=sys.stderr)
+        print("不同电脑的运行时数据目录可能不同；若不在默认位置，请先向用户确认，"
+              "再加 --runtime-root <runtime-data 目录> 或 --log-path <runtime.jsonl 路径>。",
+              file=sys.stderr)
         return 1
     return args.func(args)
 

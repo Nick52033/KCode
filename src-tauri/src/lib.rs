@@ -34,9 +34,8 @@ use tauri::tray::TrayIconBuilder;
 use tauri_plugin_dialog::{DialogExt, MessageDialogKind};
 
 #[cfg(desktop)]
-const SINGLE_INSTANCE_TITLE: &str = "k-Coder 已在运行";
-#[cfg(desktop)]
-const SINGLE_INSTANCE_MESSAGE: &str = "k-Coder 已在运行，已切换到现有窗口。";
+const SINGLE_INSTANCE_TITLE: &str = "KCode 已在运行";
+const SINGLE_INSTANCE_MESSAGE: &str = "KCode 已在运行，已切换到现有窗口。";
 
 fn select_builtin_skills_root(resource_dir: &Path, development_root: Option<&Path>) -> PathBuf {
     development_root
@@ -141,7 +140,8 @@ pub fn run() {
             .map_err(|error| std::io::Error::other(error.to_string()))?;
             app.manage(mobile_service);
             app.manage(weixin::WeixinService::new());
-            app.state::<weixin::WeixinService>().restore_on_startup(app.handle().clone());
+            app.state::<weixin::WeixinService>()
+                .restore_on_startup(app.handle().clone());
             // 只有在用户此前显式开启过局域网访问时才自动恢复监听。
             app.state::<mobile::MobileService>().restore_on_startup()?;
             scheduled_tasks::spawn_scheduler(app.handle().clone());
@@ -153,8 +153,8 @@ pub fn run() {
             let menu = Menu::with_items(app, &[&show, &quit])?;
 
             let _tray = TrayIconBuilder::new()
-                .icon(Image::from_bytes(include_bytes!("../icons/icon.png"))?)
-                .tooltip("k-Coder")
+                .icon(Image::from_bytes(include_bytes!("../icons/128x128.png"))?)
+                .tooltip("KCode")
                 .menu(&menu)
                 .show_menu_on_left_click(false)
                 .on_tray_icon_event(move |app, event| {
@@ -190,7 +190,7 @@ pub fn run() {
                             &notification_app,
                         )
                         .builder()
-                        .title("k-Coder")
+                        .title("KCode")
                         .body("已最小化到系统托盘，右键托盘图标可退出")
                         .show();
                     });
@@ -415,10 +415,10 @@ mod tests {
 
     #[test]
     fn single_instance_notice_explains_existing_window_reuse() {
-        assert_eq!(SINGLE_INSTANCE_TITLE, "k-Coder 已在运行");
+        assert_eq!(SINGLE_INSTANCE_TITLE, "KCode 已在运行");
         assert_eq!(
             SINGLE_INSTANCE_MESSAGE,
-            "k-Coder 已在运行，已切换到现有窗口。"
+            "KCode 已在运行，已切换到现有窗口。"
         );
     }
 }

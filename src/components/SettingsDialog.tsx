@@ -490,7 +490,7 @@ function ProviderFallbackSettingsPage({
         <details className="provider-fallback-rules">
           <summary>切换规则</summary>
           <div>
-            <p>遇到可切换的故障时，k-Coder 会按设置的顺序尝试备用供应商。主供应商已开始回复或调用工具后，本轮不会再切换。</p>
+            <p>遇到可切换的故障时，KCode 会按设置的顺序尝试备用供应商。主供应商已开始回复或调用工具后，本轮不会再切换。</p>
             <p>使用 New API 时，网关内部渠道由 New API 管理；这里配置的是网关整体不可用时接手的供应商。</p>
           </div>
         </details>
@@ -2061,6 +2061,16 @@ function formatKnowledgeBytes(bytes: number) {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MiB`;
 }
 
+type KnowledgeTabId = "sources" | "search" | "advanced";
+
+/// 知识库设置页的三个分区。添加文件依赖集合，所以「集合与来源」合成一个分区，
+/// 不再有需要前置条件的灰色步骤按钮。
+const KNOWLEDGE_TABS: Array<{ id: KnowledgeTabId; label: string; hint: string; icon: typeof Library }> = [
+  { id: "sources", label: "集合与来源", hint: "创建集合并添加工作区文件", icon: Library },
+  { id: "search", label: "检索验证", hint: "输入关键词，查看引用", icon: Search },
+  { id: "advanced", label: "进阶与诊断", hint: "语义检索、指标与关系", icon: Sparkles },
+];
+
 function KnowledgePage() {
   const [settings, setSettings] = useState<KnowledgeSettings | null>(null);
   const [embedding, setEmbedding] = useState<EmbeddingSettings | null>(null);
@@ -2081,6 +2091,7 @@ function KnowledgePage() {
     id: string;
     name: string;
   }>(null);
+  const [knowledgeTab, setKnowledgeTab] = useState<KnowledgeTabId>("sources");
   const nameInputRef = useRef<HTMLInputElement>(null);
   const sourcePickerRef = useRef<HTMLButtonElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -2222,12 +2233,6 @@ function KnowledgePage() {
   const allSources = Object.values(sources).flat();
   const indexedSources = allSources.filter((source) => source.state === "indexed").length;
   const activeSources = allSources.filter((source) => source.state === "queued" || source.state === "indexing").length;
-  const guideStep = collections.length === 0 ? 0 : allSources.length === 0 ? 1 : 2;
-  const guideSteps = [
-    { title: "创建集合", hint: "按项目或主题分组", target: nameInputRef },
-    { title: "添加文件", hint: "选择工作区文件，自动索引", target: sourcePickerRef },
-    { title: "试搜验证", hint: "输入关键词，查看引用", target: searchInputRef },
-  ];
 
   if (!settings || !embedding) return <section className="settings-page knowledge-page knowledge-page--compact"><div className="settings-page-header"><div><p className="settings-eyebrow">知识与规则</p><h3>知识库</h3></div></div><div className="settings-pending">正在加载知识库</div></section>;
   return <section className="settings-page knowledge-page knowledge-page--compact" aria-labelledby="knowledge-page-title">
@@ -2239,104 +2244,118 @@ function KnowledgePage() {
       <label className="knowledge-enable-toggle"><input type="checkbox" checked={settings.enabled} disabled={busy} onChange={(event) => void run(async () => { setSettings(await setKnowledgeEnabled(event.target.checked)); })} /><span><strong>{settings.enabled ? "知识库已启用" : "知识库已停用"}</strong><small>{settings.enabled ? "搜索时可使用已建立的索引" : "开启后允许智能体检索本地来源"}</small></span></label>
     </header>
 
-    <nav className="knowledge-quickstart" aria-label="知识库使用步骤">
-      {guideSteps.map((step, index) => <button className={`knowledge-guide-step${index < guideStep ? " is-complete" : index === guideStep ? " is-current" : ""}`} type="button" key={step.title} aria-current={index === guideStep ? "step" : undefined} disabled={busy || (index === 1 && collections.length === 0)} onClick={() => step.target.current?.focus()}>
-        <span className="knowledge-guide-number" aria-hidden="true">{index < guideStep ? <Check size={13} /> : index + 1}</span><span><strong>{step.title}</strong><small>{step.hint}</small></span><ChevronRight size={14} aria-hidden="true" />
-      </button>)}
-    </nav>
-    <p className="knowledge-guide-note">{!settings.enabled ? "知识库已停用。你仍可管理文件，启用后才能试搜。" : activeSources > 0 ? `${activeSources} 个来源正在索引，完成后可试搜验证。` : collections.length === 0 ? "从创建第一个集合开始；本地全文检索无需配置 API Key。" : allSources.length === 0 ? "下一步：为集合选择文件，系统会自动建立索引。" : "在下方试搜关键词，确认索引效果；语义检索可按需开启。"}</p>
-
-    <section className="knowledge-create-card" aria-labelledby="knowledge-create-title">
-      <div className="knowledge-card-heading"><div><h4 id="knowledge-create-title">新建集合</h4></div></div>
-      <form className="knowledge-collection-form" noValidate onSubmit={(event) => void createCollection(event)}>
-        <label className="knowledge-field"><span>名称</span><input ref={nameInputRef} value={name} maxLength={80} placeholder="例如：项目文档" aria-label="Collection 名称" aria-invalid={Boolean(nameError)} aria-describedby={nameError ? "knowledge-collection-name-error" : undefined} onChange={(event) => { setName(event.target.value); if (nameError) setNameError(""); }} /></label>
-        <button className="primary-button" type="submit" disabled={busy}><Plus size={14} />创建</button>
-        {nameError && <small className="knowledge-field-error" id="knowledge-collection-name-error" role="alert">{nameError}</small>}
-      </form>
-    </section>
-
-    <div className="knowledge-section-header"><div><h4>我的集合 <span className="knowledge-count-badge">{collections.length}</span></h4></div><span>{allSources.length} 个来源 · {indexedSources} 个已索引</span></div>
-    {collections.length ? collections.map((collection) => {
-      const collectionPath = sourcePaths[collection.id] ?? "";
-      const collectionSources = sources[collection.id] ?? [];
-      const picking = pickerCollectionId === collection.id;
-      return <article className="memory-row knowledge-collection-card" key={collection.id}>
-        <header className="knowledge-collection-header">
-          <div className="knowledge-collection-title"><span className="knowledge-collection-icon" aria-hidden="true"><Library size={16} /></span><div><div className="knowledge-name-line"><h4>{collection.name}</h4><span className="knowledge-count-badge">{collectionSources.length} 个来源</span></div><p>{collection.indexedChunkCount} 个可检索切片</p></div></div>
-          <div className="knowledge-collection-actions"><label className="extension-toggle"><input type="checkbox" checked={collection.enabled} disabled={busy} onChange={(event) => void run(async () => { await upsertKnowledgeCollection({ id: collection.id, name: collection.name, enabled: event.target.checked }); })} /><span>启用</span></label><button className="knowledge-icon-button" type="button" title="删除 Collection" aria-label={`删除 Collection ${collection.name}`} disabled={busy} onClick={() => setPendingDelete({ kind: "collection", id: collection.id, name: collection.name })}><Trash2 size={15} /></button></div>
-        </header>
-        <div className="knowledge-source-panel">
-          <div className="knowledge-source-heading"><div><strong>{collectionSources.length ? "管理来源" : "下一步：添加文件"}</strong></div><span>仅限当前工作区 · 支持多选</span></div>
-          <div className="knowledge-source-add">
-            <button ref={collection.id === collections[0]?.id ? sourcePickerRef : undefined} className="primary-button knowledge-picker-button" type="button" disabled={busy || picking} aria-label="选择文件" title="从当前工作区选择文件" onClick={() => void pickSources(collection.id)}><FolderOpen size={15} />{picking ? "选择中..." : "选择文件"}</button>
-            <label className="knowledge-source-input"><span className="sr-only">工作区相对路径</span><FileText size={15} aria-hidden="true" /><input value={collectionPath} placeholder="工作区相对路径，如 docs/guide.md" aria-label="来源路径" onChange={(event) => { setSourcePaths((current) => ({ ...current, [collection.id]: event.target.value })); if (sourceErrors[collection.id]) setSourceErrors((current) => ({ ...current, [collection.id]: "" })); }} /></label>
-            <button className="secondary-button" type="button" disabled={busy || picking || !collectionPath.trim()} onClick={() => void addManualSource(collection.id)}><Plus size={14} />添加路径</button>
-          </div>
-          {sourceErrors[collection.id] && <small className="knowledge-field-error" role="alert">{sourceErrors[collection.id]}</small>}
-          <div className="knowledge-source-list">
-            {collectionSources.length ? collectionSources.map((source) => {
-              const active = source.state === "queued" || source.state === "indexing";
-              const StatusIcon = source.state === "indexed" ? CheckCircle2 : source.state === "failed" ? AlertCircle : Clock3;
-              const current = progress[source.sourceId];
-              const percent = current ? Math.min(100, Math.max(0, current.percent)) : 0;
-              return <div className="knowledge-source-row" key={source.sourceId}>
-                <span className="knowledge-source-file-icon" aria-hidden="true"><FileText size={15} /></span><div className="knowledge-source-copy"><strong title={source.relativePath}>{source.relativePath}</strong><small>{formatKnowledgeBytes(source.sizeBytes)}{source.contentHashPrefix ? ` · ${source.contentHashPrefix}` : ""} · {source.chunkCount} chunks</small>{active && current ? <div className="knowledge-progress" role="status" aria-label={`${source.relativePath} 索引进度`}><span className="knowledge-progress-track"><span className="knowledge-progress-bar" style={{ width: `${percent}%` }} /></span><small>{knowledgeStageLabel(current.stage)} · {percent}% · {current.processedChunks}/{current.totalChunks} 切片</small></div> : null}</div>
-                <span className={`knowledge-source-status knowledge-source-status--${source.state}`} aria-live="polite"><StatusIcon size={13} aria-hidden="true" />{knowledgeSourceStateLabel(source.state)}{source.lastErrorCode ? ` · ${source.lastErrorCode}` : ""}</span>
-                <div className="knowledge-source-actions">
-                  {active && source.initialJobId ? <button className="knowledge-icon-button" type="button" title="取消索引" aria-label={`取消 ${source.relativePath} 的索引`} disabled={busy} onClick={() => void run(async () => { await cancelKnowledgeIndexJob(source.initialJobId!); })}><CircleStop size={15} /></button> : null}
-                  <button className="knowledge-icon-button" type="button" title="刷新来源" aria-label={`刷新 ${source.relativePath}`} disabled={busy || active} onClick={() => void run(async () => { await refreshKnowledgeSource(source.sourceId); })}><RefreshCw className={active ? "spin" : ""} size={15} /></button>
-                  <button className="knowledge-icon-button knowledge-icon-button--danger" type="button" title="删除知识来源" aria-label={`删除知识来源 ${source.relativePath}`} disabled={busy} onClick={() => setPendingDelete({ kind: "source", id: source.sourceId, name: source.relativePath })}><Trash2 size={15} /></button>
-                </div>
-              </div>;
-            }) : <div className="knowledge-source-empty"><FileText size={19} aria-hidden="true" /><span>还没有来源，选择一个工作区文件开始建立索引。</span></div>}
-          </div>
-        </div>
-      </article>;
-    }) : <div className="knowledge-empty-collections"><Library size={20} aria-hidden="true" /><strong>先创建一个集合</strong><span>在上方填写名称，再添加需要检索的文件。</span></div>}
-
-    <KnowledgeRetrievalPanel enabled={settings.enabled} budgetPercent={settings.knowledgeBudgetPercent} inputRef={searchInputRef} />
-
-    <div className="knowledge-section-header knowledge-advanced-heading"><h4>进阶与诊断</h4><span>基础检索无需配置以下选项</span></div>
-    <details className="knowledge-disclosure">
-      <summary><Sparkles size={15} aria-hidden="true" /><span><strong id="knowledge-semantic-title">语义检索</strong><small>按含义匹配，需配置 API Key</small></span><span className="knowledge-count-badge">{embedding.semanticEnabled ? "已开启" : "可选"}</span><ChevronRight className="knowledge-disclosure-chevron" size={15} aria-hidden="true" /></summary>
-      <section className="knowledge-settings-card" aria-labelledby="knowledge-semantic-title">
-      <p className="settings-help">关闭语义检索时使用本地 FTS-only；开启后只会向 SiliconFlow 发送已建立索引的文本片段。</p>
-      <div className="knowledge-semantic-layout"><label className="knowledge-enable-toggle knowledge-enable-toggle--compact"><input type="checkbox" checked={embedding.semanticEnabled} disabled={busy} onChange={(event) => void run(async () => { setEmbedding(await setEmbeddingSettings({ semanticEnabled: event.target.checked, batchSize: embedding.batchSize, timeoutMs: embedding.timeoutMs, maxVectorScanChunks: embedding.maxVectorScanChunks })); })} /><span><strong>启用语义检索</strong><small>{embedding.semanticEnabled ? "混合 BM25 与向量排序" : "仅使用本地全文检索"}</small></span></label><div className="knowledge-engine-meta"><span>{embedding.provider}</span><span>{embedding.model}</span><span>{embedding.embeddingStatus}</span></div></div>
-      <div className="knowledge-api-row"><label className="knowledge-api-input"><span className="sr-only">SiliconFlow API Key</span><KeyRound size={15} aria-hidden="true" /><input type="password" value={apiKey} maxLength={512} autoComplete="new-password" placeholder={embedding.embeddingConfigured ? "已配置 API Key" : "SiliconFlow API Key"} aria-label="SiliconFlow API Key" onChange={(event) => setApiKey(event.target.value)} /></label><button className="secondary-button" type="button" disabled={busy || !apiKey.trim()} onClick={() => void run(async () => { await setEmbeddingApiKey(apiKey); setApiKey(""); })}><Save size={14} />保存</button>{embedding.embeddingConfigured && <><button className="secondary-button" type="button" disabled={busy} onClick={() => void run(async () => { const result = await testEmbeddingConnection(); if (!result.connected) throw new Error(result.errorCode ?? "连接失败"); })}><PlayCircle size={14} />测试连接</button><button className="secondary-button knowledge-danger-button" type="button" disabled={busy} onClick={() => void run(async () => { await deleteEmbeddingApiKey(); })}><Trash2 size={14} />删除 Key</button></>}</div>
-      </section>
-    </details>
-    <details className="knowledge-disclosure">
-      <summary><BarChart3 size={15} aria-hidden="true" /><span><strong id="knowledge-metrics-title">运行指标</strong><small>索引耗时、向量请求与错误</small></span><span className="knowledge-card-hint">仅统计本次运行</span><ChevronRight className="knowledge-disclosure-chevron" size={15} aria-hidden="true" /></summary>
-      <section className="knowledge-settings-card" aria-labelledby="knowledge-metrics-title">
-      <div className="knowledge-metrics-grid">
-        <div><span>已完成</span><strong>{metrics?.jobsCompleted ?? 0}</strong></div>
-        <div><span>内容未变化</span><strong>{metrics?.jobsReused ?? 0}</strong></div>
-        <div><span>失败</span><strong>{metrics?.jobsFailed ?? 0}</strong></div>
-        <div><span>取消</span><strong>{metrics?.jobsCancelled ?? 0}</strong></div>
-        <div><span>已索引切片</span><strong>{metrics?.chunksIndexed ?? 0}</strong></div>
-        <div><span>已写入向量</span><strong>{metrics?.vectorsIndexed ?? 0}</strong></div>
-        <div><span>Embedding 请求</span><strong>{metrics?.embeddingRequests ?? 0}</strong></div>
-        <div><span>网络重试</span><strong>{metrics?.embeddingRetries ?? 0}</strong></div>
-        <div><span>平均耗时</span><strong>{metrics?.averageIndexDurationMs ?? 0} ms</strong></div>
+    <div className="knowledge-body">
+      <div className="knowledge-tabs" role="tablist" aria-label="知识库设置分区" onKeyDown={(event) => { if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return; event.preventDefault(); const index = KNOWLEDGE_TABS.findIndex((tab) => tab.id === knowledgeTab); const offset = event.key === "ArrowRight" ? 1 : -1; const next = KNOWLEDGE_TABS[(index + offset + KNOWLEDGE_TABS.length) % KNOWLEDGE_TABS.length]; setKnowledgeTab(next.id); event.currentTarget.querySelector<HTMLButtonElement>(`#knowledge-tab-${next.id}`)?.focus(); }}>
+        {KNOWLEDGE_TABS.map((tab) => {
+          const TabIcon = tab.icon;
+          return <button className={`knowledge-tab${knowledgeTab === tab.id ? " is-active" : ""}`} type="button" key={tab.id} id={`knowledge-tab-${tab.id}`} role="tab" aria-selected={knowledgeTab === tab.id} aria-controls={`knowledge-panel-${tab.id}`} tabIndex={knowledgeTab === tab.id ? 0 : -1} onClick={() => setKnowledgeTab(tab.id)}>
+            <span className="knowledge-tab-icon" aria-hidden="true"><TabIcon size={15} /></span><span className="knowledge-tab-copy"><strong>{tab.label}</strong><small>{tab.hint}</small></span>
+          </button>;
+        })}
       </div>
-      {metrics?.lastErrorCode ? <p className="settings-help">最近一次索引错误：{metrics.lastErrorCode}</p> : null}
+      <div className="knowledge-main">
+      <p className="knowledge-guide-note">{knowledgeTab === "advanced" ? "语义检索与运行指标都是可选项，基础检索无需配置。" : knowledgeTab === "search" ? !settings.enabled ? "知识库已停用，启用后才能检索。" : activeSources > 0 ? `${activeSources} 个来源正在索引，完成后可试搜验证。` : allSources.length === 0 ? "先为集合添加文件并完成索引，再回来试搜验证。" : "输入关键词，确认索引效果；语义检索可按需开启。" : !settings.enabled ? "知识库已停用。你仍可管理文件，启用后才能检索。" : activeSources > 0 ? `${activeSources} 个来源正在索引，可继续添加其他文件。` : collections.length === 0 ? "从创建第一个集合开始；本地全文检索无需配置 API Key。" : allSources.length === 0 ? "下一步：为集合选择文件，系统会自动建立索引。" : "可继续添加文件，或切到「检索验证」确认索引效果。"}</p>
+
+      {knowledgeTab === "sources" && <section className="knowledge-tab-panel" id="knowledge-panel-sources" role="tabpanel" aria-labelledby="knowledge-tab-sources" tabIndex={-1}>
+
+      <section className="knowledge-create-card" aria-labelledby="knowledge-create-title">
+        <div className="knowledge-card-heading"><div><h4 id="knowledge-create-title">新建集合</h4></div></div>
+        <form className="knowledge-collection-form" noValidate onSubmit={(event) => void createCollection(event)}>
+          <label className="knowledge-field"><span>名称</span><input ref={nameInputRef} value={name} maxLength={80} placeholder="例如：项目文档" aria-label="Collection 名称" aria-invalid={Boolean(nameError)} aria-describedby={nameError ? "knowledge-collection-name-error" : undefined} onChange={(event) => { setName(event.target.value); if (nameError) setNameError(""); }} /></label>
+          <button className="primary-button" type="submit" disabled={busy}><Plus size={14} />创建</button>
+          {nameError && <small className="knowledge-field-error" id="knowledge-collection-name-error" role="alert">{nameError}</small>}
+        </form>
       </section>
-    </details>
-    <details className="knowledge-disclosure">
-      <summary><Network size={15} aria-hidden="true" /><span><strong>关系审核</strong><small>审核事实候选，查询已生效关系</small></span><ChevronRight className="knowledge-disclosure-chevron" size={15} aria-hidden="true" /></summary>
-      <KnowledgeGraphPanel collections={collections} enabled={settings.enabled} />
-    </details>
-    {error && <div className="settings-error" role="alert">{error}</div>}
-    {pendingDelete && <div className="modal-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && setPendingDelete(null)} onKeyDown={(event) => { if (event.key !== "Escape") return; event.preventDefault(); event.stopPropagation(); setPendingDelete(null); }}>
-      <section className="delete-confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="knowledge-delete-title">
-        <h4 id="knowledge-delete-title">{pendingDelete.kind === "collection" ? "删除 Collection" : "删除知识来源"}</h4>
-        <p>{pendingDelete.kind === "collection" ? `将删除“${pendingDelete.name}”中的全部本地索引，工作区原文件不会被删除。` : `将删除“${pendingDelete.name}”的本地索引，工作区原文件不会被删除。`}</p>
-        <div className="delete-confirm-actions">
-          <button className="secondary-button" type="button" autoFocus disabled={busy} onClick={() => setPendingDelete(null)}>取消</button>
-          <button className="danger-button" type="button" disabled={busy} onClick={() => void confirmDelete()}><Trash2 size={14} />删除索引</button>
+
+      <div className="knowledge-section-header"><div><h4>我的集合 <span className="knowledge-count-badge">{collections.length}</span></h4></div><span>{allSources.length} 个来源 · {indexedSources} 个已索引</span></div>
+      {collections.length ? collections.map((collection) => {
+        const collectionPath = sourcePaths[collection.id] ?? "";
+        const collectionSources = sources[collection.id] ?? [];
+        const picking = pickerCollectionId === collection.id;
+        return <article className="memory-row knowledge-collection-card" key={collection.id}>
+          <header className="knowledge-collection-header">
+            <div className="knowledge-collection-title"><span className="knowledge-collection-icon" aria-hidden="true"><Library size={16} /></span><div><div className="knowledge-name-line"><h4>{collection.name}</h4><span className="knowledge-count-badge">{collectionSources.length} 个来源</span></div><p>{collection.indexedChunkCount} 个可检索切片</p></div></div>
+            <div className="knowledge-collection-actions"><label className="extension-toggle"><input type="checkbox" checked={collection.enabled} disabled={busy} onChange={(event) => void run(async () => { await upsertKnowledgeCollection({ id: collection.id, name: collection.name, enabled: event.target.checked }); })} /><span>启用</span></label><button className="knowledge-icon-button" type="button" title="删除 Collection" aria-label={`删除 Collection ${collection.name}`} disabled={busy} onClick={() => setPendingDelete({ kind: "collection", id: collection.id, name: collection.name })}><Trash2 size={15} /></button></div>
+          </header>
+          <div className="knowledge-source-panel">
+            <div className="knowledge-source-heading"><div><strong>{collectionSources.length ? "管理来源" : "下一步：添加文件"}</strong></div><span>仅限当前工作区 · 支持多选</span></div>
+            <div className="knowledge-source-add">
+              <button ref={collection.id === collections[0]?.id ? sourcePickerRef : undefined} className="primary-button knowledge-picker-button" type="button" disabled={busy || picking} aria-label="选择文件" title="从当前工作区选择文件" onClick={() => void pickSources(collection.id)}><FolderOpen size={15} />{picking ? "选择中..." : "选择文件"}</button>
+              <label className="knowledge-source-input"><span className="sr-only">工作区相对路径</span><FileText size={15} aria-hidden="true" /><input value={collectionPath} placeholder="工作区相对路径，如 docs/guide.md" aria-label="来源路径" onChange={(event) => { setSourcePaths((current) => ({ ...current, [collection.id]: event.target.value })); if (sourceErrors[collection.id]) setSourceErrors((current) => ({ ...current, [collection.id]: "" })); }} /></label>
+              <button className="secondary-button" type="button" disabled={busy || picking || !collectionPath.trim()} onClick={() => void addManualSource(collection.id)}><Plus size={14} />添加路径</button>
+            </div>
+            {sourceErrors[collection.id] && <small className="knowledge-field-error" role="alert">{sourceErrors[collection.id]}</small>}
+            <div className="knowledge-source-list">
+              {collectionSources.length ? collectionSources.map((source) => {
+                const active = source.state === "queued" || source.state === "indexing";
+                const StatusIcon = source.state === "indexed" ? CheckCircle2 : source.state === "failed" ? AlertCircle : Clock3;
+                const current = progress[source.sourceId];
+                const percent = current ? Math.min(100, Math.max(0, current.percent)) : 0;
+                return <div className="knowledge-source-row" key={source.sourceId}>
+                  <span className="knowledge-source-file-icon" aria-hidden="true"><FileText size={15} /></span><div className="knowledge-source-copy"><strong title={source.relativePath}>{source.relativePath}</strong><small>{formatKnowledgeBytes(source.sizeBytes)}{source.contentHashPrefix ? ` · ${source.contentHashPrefix}` : ""} · {source.chunkCount} chunks</small>{active && current ? <div className="knowledge-progress" role="status" aria-label={`${source.relativePath} 索引进度`}><span className="knowledge-progress-track"><span className="knowledge-progress-bar" style={{ width: `${percent}%` }} /></span><small>{knowledgeStageLabel(current.stage)} · {percent}% · {current.processedChunks}/{current.totalChunks} 切片</small></div> : null}</div>
+                  <span className={`knowledge-source-status knowledge-source-status--${source.state}`} aria-live="polite"><StatusIcon size={13} aria-hidden="true" />{knowledgeSourceStateLabel(source.state)}{source.lastErrorCode ? ` · ${source.lastErrorCode}` : ""}</span>
+                  <div className="knowledge-source-actions">
+                    {active && source.initialJobId ? <button className="knowledge-icon-button" type="button" title="取消索引" aria-label={`取消 ${source.relativePath} 的索引`} disabled={busy} onClick={() => void run(async () => { await cancelKnowledgeIndexJob(source.initialJobId!); })}><CircleStop size={15} /></button> : null}
+                    <button className="knowledge-icon-button" type="button" title="刷新来源" aria-label={`刷新 ${source.relativePath}`} disabled={busy || active} onClick={() => void run(async () => { await refreshKnowledgeSource(source.sourceId); })}><RefreshCw className={active ? "spin" : ""} size={15} /></button>
+                    <button className="knowledge-icon-button knowledge-icon-button--danger" type="button" title="删除知识来源" aria-label={`删除知识来源 ${source.relativePath}`} disabled={busy} onClick={() => setPendingDelete({ kind: "source", id: source.sourceId, name: source.relativePath })}><Trash2 size={15} /></button>
+                  </div>
+                </div>;
+              }) : <div className="knowledge-source-empty"><FileText size={19} aria-hidden="true" /><span>还没有来源，选择一个工作区文件开始建立索引。</span></div>}
+            </div>
+          </div>
+        </article>;
+      }) : <div className="knowledge-empty-collections"><Library size={20} aria-hidden="true" /><strong>先创建一个集合</strong><span>在上方填写名称，再添加需要检索的文件。</span></div>}
+
+      </section>}
+
+      {knowledgeTab === "search" && <section className="knowledge-tab-panel" id="knowledge-panel-search" role="tabpanel" aria-labelledby="knowledge-tab-search" tabIndex={-1}>
+      <KnowledgeRetrievalPanel enabled={settings.enabled} budgetPercent={settings.knowledgeBudgetPercent} inputRef={searchInputRef} />
+      </section>}
+
+      {knowledgeTab === "advanced" && <section className="knowledge-tab-panel" id="knowledge-panel-advanced" role="tabpanel" aria-labelledby="knowledge-tab-advanced" tabIndex={-1}>
+      <details className="knowledge-disclosure">
+        <summary><Sparkles size={15} aria-hidden="true" /><span><strong id="knowledge-semantic-title">语义检索</strong><small>按含义匹配，需配置 API Key</small></span><span className="knowledge-count-badge">{embedding.semanticEnabled ? "已开启" : "可选"}</span><ChevronRight className="knowledge-disclosure-chevron" size={15} aria-hidden="true" /></summary>
+        <section className="knowledge-settings-card" aria-labelledby="knowledge-semantic-title">
+        <p className="settings-help">关闭语义检索时使用本地 FTS-only；开启后只会向 SiliconFlow 发送已建立索引的文本片段。</p>
+        <div className="knowledge-semantic-layout"><label className="knowledge-enable-toggle knowledge-enable-toggle--compact"><input type="checkbox" checked={embedding.semanticEnabled} disabled={busy} onChange={(event) => void run(async () => { setEmbedding(await setEmbeddingSettings({ semanticEnabled: event.target.checked, batchSize: embedding.batchSize, timeoutMs: embedding.timeoutMs, maxVectorScanChunks: embedding.maxVectorScanChunks })); })} /><span><strong>启用语义检索</strong><small>{embedding.semanticEnabled ? "混合 BM25 与向量排序" : "仅使用本地全文检索"}</small></span></label><div className="knowledge-engine-meta"><span>{embedding.provider}</span><span>{embedding.model}</span><span>{embedding.embeddingStatus}</span></div></div>
+        <div className="knowledge-api-row"><label className="knowledge-api-input"><span className="sr-only">SiliconFlow API Key</span><KeyRound size={15} aria-hidden="true" /><input type="password" value={apiKey} maxLength={512} autoComplete="new-password" placeholder={embedding.embeddingConfigured ? "已配置 API Key" : "SiliconFlow API Key"} aria-label="SiliconFlow API Key" onChange={(event) => setApiKey(event.target.value)} /></label><button className="secondary-button" type="button" disabled={busy || !apiKey.trim()} onClick={() => void run(async () => { await setEmbeddingApiKey(apiKey); setApiKey(""); })}><Save size={14} />保存</button>{embedding.embeddingConfigured && <><button className="secondary-button" type="button" disabled={busy} onClick={() => void run(async () => { const result = await testEmbeddingConnection(); if (!result.connected) throw new Error(result.errorCode ?? "连接失败"); })}><PlayCircle size={14} />测试连接</button><button className="secondary-button knowledge-danger-button" type="button" disabled={busy} onClick={() => void run(async () => { await deleteEmbeddingApiKey(); })}><Trash2 size={14} />删除 Key</button></>}</div>
+        </section>
+      </details>
+      <details className="knowledge-disclosure">
+        <summary><BarChart3 size={15} aria-hidden="true" /><span><strong id="knowledge-metrics-title">运行指标</strong><small>索引耗时、向量请求与错误</small></span><span className="knowledge-card-hint">仅统计本次运行</span><ChevronRight className="knowledge-disclosure-chevron" size={15} aria-hidden="true" /></summary>
+        <section className="knowledge-settings-card" aria-labelledby="knowledge-metrics-title">
+        <div className="knowledge-metrics-grid">
+          <div><span>已完成</span><strong>{metrics?.jobsCompleted ?? 0}</strong></div>
+          <div><span>内容未变化</span><strong>{metrics?.jobsReused ?? 0}</strong></div>
+          <div><span>失败</span><strong>{metrics?.jobsFailed ?? 0}</strong></div>
+          <div><span>取消</span><strong>{metrics?.jobsCancelled ?? 0}</strong></div>
+          <div><span>已索引切片</span><strong>{metrics?.chunksIndexed ?? 0}</strong></div>
+          <div><span>已写入向量</span><strong>{metrics?.vectorsIndexed ?? 0}</strong></div>
+          <div><span>Embedding 请求</span><strong>{metrics?.embeddingRequests ?? 0}</strong></div>
+          <div><span>网络重试</span><strong>{metrics?.embeddingRetries ?? 0}</strong></div>
+          <div><span>平均耗时</span><strong>{metrics?.averageIndexDurationMs ?? 0} ms</strong></div>
         </div>
-      </section>
-    </div>}
+        {metrics?.lastErrorCode ? <p className="settings-help">最近一次索引错误：{metrics.lastErrorCode}</p> : null}
+        </section>
+      </details>
+      <details className="knowledge-disclosure">
+        <summary><Network size={15} aria-hidden="true" /><span><strong>关系审核</strong><small>审核事实候选，查询已生效关系</small></span><ChevronRight className="knowledge-disclosure-chevron" size={15} aria-hidden="true" /></summary>
+        <KnowledgeGraphPanel collections={collections} enabled={settings.enabled} />
+      </details>
+      </section>}
+      {error && <div className="settings-error" role="alert">{error}</div>}
+      {pendingDelete && <div className="modal-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && setPendingDelete(null)} onKeyDown={(event) => { if (event.key !== "Escape") return; event.preventDefault(); event.stopPropagation(); setPendingDelete(null); }}>
+        <section className="delete-confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="knowledge-delete-title">
+          <h4 id="knowledge-delete-title">{pendingDelete.kind === "collection" ? "删除 Collection" : "删除知识来源"}</h4>
+          <p>{pendingDelete.kind === "collection" ? `将删除“${pendingDelete.name}”中的全部本地索引，工作区原文件不会被删除。` : `将删除“${pendingDelete.name}”的本地索引，工作区原文件不会被删除。`}</p>
+          <div className="delete-confirm-actions">
+            <button className="secondary-button" type="button" autoFocus disabled={busy} onClick={() => setPendingDelete(null)}>取消</button>
+            <button className="danger-button" type="button" disabled={busy} onClick={() => void confirmDelete()}><Trash2 size={14} />删除索引</button>
+          </div>
+        </section>
+      </div>}
+      </div>
+    </div>
   </section>;
 }
 

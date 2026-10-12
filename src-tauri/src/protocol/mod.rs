@@ -733,6 +733,8 @@ impl TurnError {
         let normalized = message.to_ascii_lowercase();
         let (code, retryable, category) = if normalized.contains("repeated_observation_loop") {
             ("repeated_observation_loop", true, TurnErrorCategory::Tool)
+        } else if normalized.contains("无实质进展") || normalized.contains("无进展") {
+            ("no_progress_guard", true, TurnErrorCategory::Runtime)
         } else if normalized.contains("provider_call_limit_exceeded")
             || normalized.contains("provider call limit")
             || normalized.contains("模型调用硬上限")
@@ -773,7 +775,12 @@ impl TurnError {
             message,
             retryable,
             category,
-            details: None,
+            details: (code == "no_progress_guard").then(|| {
+                serde_json::json!({
+                    "recovery": "new_turn",
+                    "severity": "warning",
+                })
+            }),
         }
     }
 
@@ -1322,6 +1329,19 @@ mod tests {
         assert_eq!(error.category, TurnErrorCategory::Tool);
         assert!(error.retryable);
         assert!(error.message.contains("模型在文件未变化时仍反复读取"));
+    }
+
+    #[test]
+    fn no_progress_guard_is_a_retryable_safety_stop() {
+        let error = TurnError::classify(
+            "连续 20 次模型请求没有产生实质进展（文件变更、计划步骤完成或新的验证结果），为防止空转已停止本轮。请开启新 Turn 并从当前剩余工作继续。".into(),
+        );
+
+        assert_eq!(error.code, "no_progress_guard");
+        assert_eq!(error.category, TurnErrorCategory::Runtime);
+        assert!(error.retryable);
+        assert_eq!(error.details.as_ref().unwrap()["recovery"], "new_turn");
+        assert_eq!(error.details.as_ref().unwrap()["severity"], "warning");
     }
 
     #[test]

@@ -360,7 +360,7 @@ export function ScheduledTasksPage() {
       {loading ? (
         <div className="scheduled-empty"><Loader2 className="spin" size={22} /><span>正在读取任务</span></div>
       ) : filteredTasks.length === 0 ? (
-        <div className="scheduled-empty scheduled-empty--quiet"><TimerReset size={28} /><strong>{query ? "没有匹配的任务" : "还没有定时任务"}</strong><span>{query ? "试试其他关键词。" : "创建一项自动化，让 k-Coder 在你不在电脑前时继续工作。"}</span>{!query && <button className="scheduled-primary-button" type="button" onClick={openCreate}><Plus size={15} /> 创建第一项任务</button>}</div>
+        <div className="scheduled-empty scheduled-empty--quiet"><TimerReset size={28} /><strong>{query ? "没有匹配的任务" : "还没有定时任务"}</strong><span>{query ? "试试其他关键词。" : "创建一项自动化，让 KCode 在你不在电脑前时继续工作。"}</span>{!query && <button className="scheduled-primary-button" type="button" onClick={openCreate}><Plus size={15} /> 创建第一项任务</button>}</div>
       ) : viewMode === "cards" ? (
         <div className="scheduled-task-grid">
           {filteredTasks.map((task) => (

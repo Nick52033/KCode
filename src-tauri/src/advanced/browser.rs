@@ -378,11 +378,14 @@ impl BrowserService {
             return Ok(());
         }
         let config = BrowserConfig::builder()
+            // Windows 上 Chromium 常因缺少沙箱权限在启动瞬间退出（进程码 21），
+            // 表现为「browser_navigate 失败」；禁用沙箱让内嵌浏览器可以正常拉起。
+            .no_sandbox()
             .build()
             .map_err(|error| error.to_string())?;
         let (browser, mut handler) = Browser::launch(config)
             .await
-            .map_err(|error| error.to_string())?;
+            .map_err(|error| browser_launch_failure(&error.to_string()))?;
         let handler_task = tokio::spawn(async move {
             while let Some(result) = handler.next().await {
                 if result.is_err() {
@@ -495,6 +498,19 @@ fn bound_text(value: &str, max: usize) -> String {
         end -= 1;
     }
     format!("{}...", &value[..end])
+}
+
+/// 把 Chromium 启动失败的底层报错整理成可操作的提示。
+///
+/// 内嵌浏览器未能拉起时，底层错误通常是退出状态或 stderr 片段。这里保留原始
+/// 原因，并补上「重试即可」的引导，避免用户看到裸错误码就以为整个任务失败。
+fn browser_launch_failure(detail: &str) -> String {
+    let detail = bound_text(detail.trim(), 500);
+    if detail.is_empty() {
+        "无法启动内嵌浏览器，请重试；若持续失败请检查是否已安装可用的 Chromium。".into()
+    } else {
+        format!("无法启动内嵌浏览器（{detail}）；这通常是临时的进程启动问题，请重试。")
+    }
 }
 
 #[derive(Clone, Copy)]

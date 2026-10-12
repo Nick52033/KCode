@@ -446,6 +446,7 @@ function App() {
     activeTurns,
     restoredActiveTurns,
     cancellingTurns,
+    pendingRetries,
     usage,
     contextUsage,
     turnTimeline,
@@ -1195,10 +1196,13 @@ function App() {
   const selectedChange = changes.find((change) => change.id === selectedChangeId) ?? null;
   // 仅当正在生成的 turn 属于当前线程时才视为"忙"，避免旧线程的 turn 阻塞新对话
   const currentThreadTurnId = activeThreadId ? activeTurns[activeThreadId] ?? null : null;
+  const currentRetryPendingSince = activeThreadId
+    ? pendingRetries[activeThreadId] ?? null
+    : null;
   const restoredCurrentTurnId = activeThreadId
     ? restoredActiveTurns[activeThreadId] ?? null
     : null;
-  const currentThreadBusy = Boolean(currentThreadTurnId);
+  const currentThreadBusy = Boolean(currentThreadTurnId || currentRetryPendingSince !== null);
   const currentThreadCancelling = Boolean(
     activeThreadId
     && currentThreadTurnId
@@ -1237,9 +1241,12 @@ function App() {
         detail: "",
       };
     }
+    if (currentRetryPendingSince !== null) {
+      return { label: "准备重试", detail: "" };
+    }
     if (!lastTurn) return null;
     return { label: stateLabel(lastTurn.state), detail: turnErrorMessage(lastTurn.error) };
-  }, [activeThreadId, activityStatus, cancellingTurns, currentThreadTurnId, lastTurn, restoredCurrentTurnId]);
+  }, [activeThreadId, activityStatus, cancellingTurns, currentRetryPendingSince, currentThreadTurnId, lastTurn, restoredCurrentTurnId]);
   const toolActivities = useMemo(
     () => turnTimeline.flatMap((item) => item.type === "tool" ? [item.activity] : []),
     [turnTimeline],
@@ -1449,7 +1456,7 @@ function App() {
       <Fragment key={`activity-${turnId}`}>
         <article className="message message--assistant message--activity-only">
           <div className="message-body">
-            <div className="message-role">k-Coder</div>
+            <div className="message-role">KCode</div>
             <ConversationTurnActivity
               activities={activitiesByTurn.get(turnId) ?? []}
               timeline={timelineByTurn.get(turnId) ?? []}
@@ -1663,7 +1670,7 @@ function App() {
         data-turn-id={segment.turnId}
       >
         <div className="message-body">
-          <div className="message-role">k-Coder</div>
+          <div className="message-role">KCode</div>
           <ConversationTurnActivity
             activities={segmentActivities}
             timeline={segment.timeline}
@@ -1712,7 +1719,7 @@ function App() {
     return (
       <article className="message message--assistant message--retry-group" key={`retry-group-${userMessageId}`}>
         <div className="message-body">
-          <div className="message-role">k-Coder</div>
+          <div className="message-role">KCode</div>
           {turnIds.map((turnId) => {
             const assistantMessage = assistantMessagesByTurn.get(turnId);
             const steeredAttemptSegment = steeredTurnSegmentsByTurnId.get(turnId)?.[0];
@@ -2267,7 +2274,7 @@ function App() {
           <span className="brand-mark" aria-hidden="true">
             <BrandMark size={20} />
           </span>
-          <strong>k-Coder</strong>
+          <strong>KCode</strong>
         </div>
         <div className="titlebar-actions">
           <RuntimeStatePanel
@@ -2690,7 +2697,7 @@ function App() {
                   >
                     <div className="message-body">
                       <div className="message-role">
-                        {message.role === "user" ? "你" : "k-Coder"}
+                        {message.role === "user" ? "你" : "KCode"}
                         {message.role === "user" && message.text ? (
                           <CopyMessageButton text={message.text} />
                         ) : null}
@@ -2721,7 +2728,7 @@ function App() {
                       )}
                       {!messageTimeline.length && (message.text || (message.status === "streaming" && !messageActivityStatus)) ? <div className="message-content">
                         {message.text
-                          ? renderMessageText(message.text)
+                          ? renderMessageText(message.text, message.role === "user")
                           : message.status === "streaming" && !messageActivityStatus ? (
                           <span className="typing-indicator" aria-label="AI 正在响应">
                             <span className="typing-dot" />
@@ -2752,10 +2759,20 @@ function App() {
 
               {unanchoredOrphanTurnIds.map(renderOrphanTurn)}
 
-              {currentThreadBusy && !currentTurnHasConversationEntry ? (
+              {currentRetryPendingSince !== null ? (
                 <article className="message message--assistant message--activity-only">
                   <div className="message-body">
-                    <div className="message-role">k-Coder</div>
+                    <div className="message-role">KCode</div>
+                    <TurnWaitingIndicator
+                      activityStatus="thinking"
+                      activitySinceMs={currentRetryPendingSince}
+                    />
+                  </div>
+                </article>
+              ) : currentThreadBusy && !currentTurnHasConversationEntry ? (
+                <article className="message message--assistant message--activity-only">
+                  <div className="message-body">
+                    <div className="message-role">KCode</div>
                     <TurnWaitingIndicator
                       activityStatus={activityStatus?.turnId === currentThreadTurnId ? activityStatus.status : null}
                       activitySinceMs={activityStatus?.sinceMs}
@@ -2770,7 +2787,7 @@ function App() {
               {plan?.steps.length && !planIsAttached && !planIsAttachedToOrphan && !planIsAttachedToRetryGroup ? (
                 <article className="message message--assistant message--activity-only">
                   <div className="message-body">
-                    <div className="message-role">k-Coder</div>
+                    <div className="message-role">KCode</div>
                     <ConversationTurnActivity activities={[]} plan={plan} />
                   </div>
                 </article>
@@ -2784,7 +2801,7 @@ function App() {
               {pendingApproval && (
                 <article className="message message--approval">
                   <div className="message-body">
-                    <div className="message-role">k-Coder</div>
+                    <div className="message-role">KCode</div>
                     <div className="approval-inline">
                       {pendingApprovals.length > 1 ? (
                         <div className="approval-queue-position">
@@ -2857,7 +2874,7 @@ function App() {
                 <WelcomeGlyph size={48} />
               </div>
               <h2>从一个明确的任务开始</h2>
-              <p>描述你想完成的工作，k-Coder 会在当前项目中协作推进。</p>
+              <p>描述你想完成的工作，KCode 会在当前项目中协作推进。</p>
               <span className="empty-thread__status">等待你的第一条请求</span>
             </div>
           )}
@@ -3590,7 +3607,7 @@ function UserInputCard({ request, onResolve }: {
   return (
     <article className="message message--approval">
       <div className="message-body">
-        <div className="message-role">k-Coder 提问</div>
+        <div className="message-role">KCode 提问</div>
         <div className="approval-inline">
           {request.questions.map((q, qIdx) => (
             <div key={qIdx} className="user-input-question">
@@ -3632,8 +3649,8 @@ function UserInputCard({ request, onResolve }: {
   );
 }
 
-function renderMessageText(text: string): React.ReactNode {
-  return <MarkdownContent text={text} />;
+function renderMessageText(text: string, preserveBreaks = false): React.ReactNode {
+  return <MarkdownContent text={text} preserveBreaks={preserveBreaks} />;
 }
 
 function CopyMessageButton({ text }: { text: string }) {

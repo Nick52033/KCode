@@ -428,7 +428,7 @@ function GenericToolApproval({
       onKeyDown={handleKey}
     >
       <section className="claude-approval-panel" aria-busy={busy}>
-        <div className="dialog-brand-heading"><span className="dialog-brand-mark" aria-hidden="true"><BrandMark size={18} /></span><span className="dialog-brand-caption">k-Coder</span></div>
+        <div className="dialog-brand-heading"><span className="dialog-brand-mark" aria-hidden="true"><BrandMark size={18} /></span><span className="dialog-brand-caption">KCode</span></div>
         <h2 className="claude-approval-title">
           确认执行 {request.toolName}{targetLine ? `: ${targetLine}` : ""}?
         </h2>
@@ -457,7 +457,7 @@ function GenericToolApproval({
         <input
           type="text"
           className="claude-approval-input"
-          placeholder="告诉 k-Coder 应该怎么做（可选）"
+          placeholder="告诉 KCode 应该怎么做（可选）"
           value={feedback}
           onChange={(event) => setFeedback(event.target.value)}
           disabled={busy}

@@ -1400,7 +1400,7 @@ impl ExtensionService {
         let instructions = self.instructions.read().expect("instruction lock poisoned");
         let skills = self.skills.read().expect("skill lock poisoned");
         let mut output = String::from(
-            "[k-Coder runtime instructions]\nSources are ordered from lower to higher priority. Later instructions win on conflict. Extensions never grant tool permissions.\n",
+            "[KCode runtime instructions]\nSources are ordered from lower to higher priority. Later instructions win on conflict. Extensions never grant tool permissions.\n",
         );
         for instruction in instructions.iter() {
             output.push_str(&format!(

@@ -19,7 +19,7 @@ import {
   Wrench,
 } from "lucide-react";
 import { lazy, memo, Suspense, useEffect, useRef, useState, type ReactNode } from "react";
-import { isProviderCallLimitError } from "../types/runtime";
+import { isNoProgressGuardError, isProviderCallLimitError } from "../types/runtime";
 import type {
   AgentActivityStatus,
   ChangeSet,
@@ -202,16 +202,17 @@ export const ConversationTurnActivity = memo(function ConversationTurnActivity({
       0,
     )
     : hideSupersededPatchFailures(activities).length;
+  const noProgressGuard = isNoProgressGuardError(failureError ?? terminalEvent?.detail ?? null);
   const summaryTitle = terminalEvent?.durationMs !== undefined
     ? terminalEvent.kind === "turn_cancelled"
       ? "已停止"
       : terminalEvent.kind === "turn_failed"
-        ? "请求未完成"
+        ? noProgressGuard ? "已暂停本轮" : "请求未完成"
         : `执行了 ${formatDuration(terminalEvent.durationMs)}`
     : terminalEvent?.kind === "turn_cancelled"
       ? "已停止"
       : terminalEvent?.kind === "turn_failed"
-        ? "请求未完成"
+        ? noProgressGuard ? "已暂停本轮" : "请求未完成"
         : "执行过程";
   const terminalCollapse = !visuallyStreaming && Boolean(terminalEvent);
   const SummaryIcon = visuallyStreaming
@@ -219,7 +220,7 @@ export const ConversationTurnActivity = memo(function ConversationTurnActivity({
     : terminalEvent?.kind === "turn_cancelled"
       ? Circle
       : terminalEvent?.kind === "turn_failed"
-        ? CircleX
+        ? noProgressGuard ? CircleAlert : CircleX
         : terminalEvent?.kind === "turn_completed"
           ? CircleCheck
           : Activity;
@@ -230,7 +231,7 @@ export const ConversationTurnActivity = memo(function ConversationTurnActivity({
   const summaryStatus = terminalEvent?.kind === "turn_completed"
     ? (toolCount ? `${toolCount} 个操作` : "已完成")
     : terminalEvent
-      ? terminalMeta || "已结束"
+      ? noProgressGuard ? "已暂停" : terminalMeta || "已结束"
       : toolCount ? `${toolCount} 个操作` : "处理中";
   const providerCallLimitExceeded = isProviderCallLimitError(failureError);
   const statusLabel = paced.pendingTextIds.size
@@ -299,16 +300,28 @@ export const ConversationTurnActivity = memo(function ConversationTurnActivity({
           </div>
         ) : null}
         {terminalEvent?.kind === "turn_failed" ? (
-          <div className="turn-failure-detail">
+          <div className={`turn-failure-detail${noProgressGuard ? " turn-failure-detail--warning" : ""}`}>
             <CircleAlert size={16} aria-hidden="true" />
             <div className="turn-failure-copy">
-              <strong>{providerCallLimitExceeded ? "本轮已达到安全上限" : "错误原因"}</strong>
-              <small>{terminalEvent.detail || "本轮未能完成，且没有返回更多错误信息。"}</small>
+              <strong>
+                {noProgressGuard
+                  ? "为避免重复执行，已暂停本轮"
+                  : providerCallLimitExceeded ? "本轮已达到安全上限" : "错误原因"}
+              </strong>
+              <small>
+                {noProgressGuard
+                  ? `${terminalEvent.detail || "本轮没有产生新的可执行进展。"} 已保留当前检查结果，继续后会从现有状态开始。`
+                  : terminalEvent.detail || "本轮未能完成，且没有返回更多错误信息。"}
+              </small>
             </div>
             {onRetry ? (
               <button className="turn-retry-button" type="button" onClick={onRetry}>
                 <RotateCcw size={14} aria-hidden="true" />
-                <span>{providerCallLimitExceeded ? "开启新 Turn" : plan?.steps.length ? "继续当前步骤" : "重试"}</span>
+                <span>
+                  {noProgressGuard
+                    ? "继续当前步骤"
+                    : providerCallLimitExceeded ? "开启新 Turn" : plan?.steps.length ? "继续当前步骤" : "重试"}
+                </span>
               </button>
             ) : null}
           </div>
@@ -328,7 +341,7 @@ export const ConversationTurnActivity = memo(function ConversationTurnActivity({
     <div className="turn-context">
       {hasProcess ? (
         <details
-          className={`turn-disclosure turn-execution${visuallyStreaming ? " turn-execution--live" : ""}${terminalEvent?.kind === "turn_cancelled" ? " turn-execution--cancelled" : terminalEvent?.kind === "turn_failed" ? " turn-execution--failed" : ""}`}
+          className={`turn-disclosure turn-execution${visuallyStreaming ? " turn-execution--live" : ""}${terminalEvent?.kind === "turn_cancelled" ? " turn-execution--cancelled" : terminalEvent?.kind === "turn_failed" ? noProgressGuard ? " turn-execution--warning" : " turn-execution--failed" : ""}`}
           open={!terminalCollapse || undefined}
         >
           <summary>
