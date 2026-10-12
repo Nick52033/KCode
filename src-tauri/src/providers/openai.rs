@@ -21,6 +21,7 @@ const OPENAI_REQUEST_TIMEOUT_SECONDS: u64 = 120;
 const DEEPSEEK_REQUEST_TIMEOUT_SECONDS: u64 = 300;
 const MAX_DEEPSEEK_REASONING_BYTES: usize = 2 * 1024 * 1024;
 const MAX_DEEPSEEK_REASONING_CACHE_BYTES: usize = 4 * 1024 * 1024;
+const MAX_STEP_REASONING_CACHE_BYTES: usize = 4 * 1024 * 1024;
 const MAX_DEEPSEEK_CACHED_TOOL_CALLS: usize = 512;
 const LEGACY_DEEPSEEK_TOOL_CALLS_MARKER: &str = "[Historical tool calls]";
 const LEGACY_DEEPSEEK_TOOL_RESULT_MARKER: &str = "[Historical tool result for ";
@@ -141,6 +142,79 @@ impl DeepSeekState {
 enum ChatCompletionsDialect {
     OpenAi,
     DeepSeek(DeepSeekState),
+    /// Step's OpenAI-compatible API returns `reasoning_content` and expects it
+    /// to be replayed with the assistant tool call. Keep it private and
+    /// process-local; it is never projected as a user-visible reasoning event.
+    Step(StepReasoningState),
+}
+
+#[derive(Clone, Default)]
+struct StepReasoningState {
+    cache: Arc<Mutex<StepReasoningCache>>,
+}
+
+#[derive(Default)]
+struct StepReasoningCache {
+    by_call_id: HashMap<String, Arc<str>>,
+    reasoning_bytes: usize,
+}
+
+impl StepReasoningState {
+    fn remember(&self, calls: &[ToolCall], reasoning: &str) -> Result<(), ProviderError> {
+        if calls.is_empty() || reasoning.trim().is_empty() {
+            return Ok(());
+        }
+        if reasoning.len() > MAX_DEEPSEEK_REASONING_BYTES {
+            return Err(ProviderError::InvalidResponse(format!(
+                "Step private reasoning exceeded {MAX_DEEPSEEK_REASONING_BYTES} bytes"
+            )));
+        }
+        let mut cache = self.cache.lock().map_err(|_| {
+            ProviderError::Request("Step reasoning cache is unavailable".to_string())
+        })?;
+        let new_call_count = calls
+            .iter()
+            .filter(|call| !cache.by_call_id.contains_key(&call.id))
+            .count();
+        if cache.by_call_id.len().saturating_add(new_call_count) > MAX_DEEPSEEK_CACHED_TOOL_CALLS {
+            return Err(ProviderError::InvalidResponse(format!(
+                "Step returned more than {MAX_DEEPSEEK_CACHED_TOOL_CALLS} tool calls with private reasoning in one turn"
+            )));
+        }
+        if new_call_count > 0
+            && cache.reasoning_bytes.saturating_add(reasoning.len())
+                > MAX_STEP_REASONING_CACHE_BYTES
+        {
+            return Err(ProviderError::InvalidResponse(format!(
+                "Step private reasoning cache exceeded {MAX_STEP_REASONING_CACHE_BYTES} bytes"
+            )));
+        }
+        let reasoning: Arc<str> = Arc::from(reasoning);
+        if new_call_count > 0 {
+            cache.reasoning_bytes = cache.reasoning_bytes.saturating_add(reasoning.len());
+        }
+        for call in calls {
+            cache.by_call_id.insert(call.id.clone(), reasoning.clone());
+        }
+        Ok(())
+    }
+
+    fn reasoning_for_calls(&self, calls: &[ToolCall]) -> Result<Option<Arc<str>>, ProviderError> {
+        let cache = self.cache.lock().map_err(|_| {
+            ProviderError::Request("Step reasoning cache is unavailable".to_string())
+        })?;
+        let Some(first) = calls
+            .first()
+            .and_then(|call| cache.by_call_id.get(&call.id))
+            .cloned()
+        else {
+            return Ok(None);
+        };
+        Ok(calls
+            .iter()
+            .all(|call| cache.by_call_id.get(&call.id) == Some(&first))
+            .then_some(first))
+    }
 }
 
 pub struct OpenAiChatCompletionsProvider {
@@ -168,8 +242,10 @@ impl OpenAiChatCompletionsProvider {
         let config = config
             .validate()
             .map_err(|error| ProviderError::Request(error.to_string()))?;
-        let timeout_seconds = match dialect {
-            ChatCompletionsDialect::OpenAi => OPENAI_REQUEST_TIMEOUT_SECONDS,
+        let timeout_seconds = match &dialect {
+            ChatCompletionsDialect::OpenAi | ChatCompletionsDialect::Step(_) => {
+                OPENAI_REQUEST_TIMEOUT_SECONDS
+            }
             ChatCompletionsDialect::DeepSeek(_) => DEEPSEEK_REQUEST_TIMEOUT_SECONDS,
         };
         let client = Client::builder()
@@ -195,6 +271,7 @@ impl OpenAiChatCompletionsProvider {
             ChatCompletionsDialect::DeepSeek(state) => {
                 deepseek_chat_messages(&request.messages, state, deepseek_thinking_enabled)?
             }
+            ChatCompletionsDialect::Step(state) => step_chat_messages(&request.messages, state)?,
         };
         let mut payload = json!({
             "model": request.model,
@@ -203,7 +280,7 @@ impl OpenAiChatCompletionsProvider {
             "stream_options": { "include_usage": true }
         });
         match &self.dialect {
-            ChatCompletionsDialect::OpenAi => {
+            ChatCompletionsDialect::OpenAi | ChatCompletionsDialect::Step(_) => {
                 if let Some(effort) = request.reasoning_effort.openai_value() {
                     payload["reasoning_effort"] = json!(effort);
                 }
@@ -267,6 +344,22 @@ pub struct DeepSeekChatCompletionsProvider {
     inner: OpenAiChatCompletionsProvider,
 }
 
+pub struct StepChatCompletionsProvider {
+    inner: OpenAiChatCompletionsProvider,
+}
+
+impl StepChatCompletionsProvider {
+    pub fn new(config: ProviderConfig, api_key: String) -> Result<Self, ProviderError> {
+        Ok(Self {
+            inner: OpenAiChatCompletionsProvider::new_with_dialect(
+                config,
+                api_key,
+                ChatCompletionsDialect::Step(StepReasoningState::default()),
+            )?,
+        })
+    }
+}
+
 impl DeepSeekChatCompletionsProvider {
     pub fn new(config: ProviderConfig, api_key: String) -> Result<Self, ProviderError> {
         Ok(Self {
@@ -299,6 +392,8 @@ struct OpenAiChoice {
 struct OpenAiDelta {
     content: Option<String>,
     reasoning_content: Option<String>,
+    reasoning: Option<String>,
+    reasoning_text: Option<String>,
     #[serde(default)]
     tool_calls: Vec<OpenAiToolCallDelta>,
 }
@@ -439,11 +534,15 @@ impl Provider for OpenAiChatCompletionsProvider {
             .map_err(|error| ProviderError::Request(error.to_string()))?;
         let mut payload = self.payload(&request)?;
         let deepseek = match &self.dialect {
-            ChatCompletionsDialect::OpenAi => None,
+            ChatCompletionsDialect::OpenAi | ChatCompletionsDialect::Step(_) => None,
             ChatCompletionsDialect::DeepSeek(state) => Some((
                 state.clone(),
                 deepseek_reasoning(request.reasoning_effort).0,
             )),
+        };
+        let step_state = match &self.dialect {
+            ChatCompletionsDialect::Step(state) => Some(state.clone()),
+            _ => None,
         };
 
         let mut response = self
@@ -499,6 +598,7 @@ impl Provider for OpenAiChatCompletionsProvider {
             let mut decoder = SseDecoder::default();
             let mut tool_calls = ToolCallAccumulator::default();
             let mut deepseek_reasoning_content = String::new();
+            let mut step_reasoning_content = String::new();
             let mut saw_finish_reason = false;
 
             loop {
@@ -526,6 +626,16 @@ impl Provider for OpenAiChatCompletionsProvider {
                                                 }
                                                 deepseek_reasoning_content.push_str(&delta);
                                             }
+                                        } else if step_state.is_some() {
+                                            for delta in parsed.reasoning_deltas {
+                                                if step_reasoning_content.len().saturating_add(delta.len()) > MAX_DEEPSEEK_REASONING_BYTES {
+                                                    yield Err(ProviderError::InvalidResponse(format!(
+                                                        "Step private reasoning exceeded {MAX_DEEPSEEK_REASONING_BYTES} bytes"
+                                                    )));
+                                                    return;
+                                                }
+                                                step_reasoning_content.push_str(&delta);
+                                            }
                                         }
                                         for event in parsed.events.into_iter().map(|event| redact_event(event, &secret)) { yield Ok(event); }
                                         if let Some(error) = parsed.terminal_error {
@@ -542,6 +652,12 @@ impl Provider for OpenAiChatCompletionsProvider {
                                                             return;
                                                         }
                                                     }
+                                                    if let Some(state) = &step_state {
+                                                        if let Err(error) = state.remember(&calls, &step_reasoning_content) {
+                                                            yield Err(error);
+                                                            return;
+                                                        }
+                                                    }
                                                     for call in calls { yield Ok(ProviderEvent::ToolCall { call }); }
                                                 },
                                                 Err(error) => { yield Err(error); return; }
@@ -552,6 +668,12 @@ impl Provider for OpenAiChatCompletionsProvider {
                                                 Ok(calls) => {
                                                     if let Some((state, thinking_enabled)) = &deepseek {
                                                         if let Err(error) = state.remember(&calls, &deepseek_reasoning_content, *thinking_enabled) {
+                                                            yield Err(error);
+                                                            return;
+                                                        }
+                                                    }
+                                                    if let Some(state) = &step_state {
+                                                        if let Err(error) = state.remember(&calls, &step_reasoning_content) {
                                                             yield Err(error);
                                                             return;
                                                         }
@@ -578,7 +700,21 @@ impl Provider for OpenAiChatCompletionsProvider {
                         if let Err(error) = decoder.finish() { yield Err(error); return; }
                         if saw_finish_reason {
                             match tool_calls.take() {
-                                Ok(calls) => for call in calls { yield Ok(ProviderEvent::ToolCall { call }); },
+                                Ok(calls) => {
+                                    if let Some((state, thinking_enabled)) = &deepseek {
+                                        if let Err(error) = state.remember(&calls, &deepseek_reasoning_content, *thinking_enabled) {
+                                            yield Err(error);
+                                            return;
+                                        }
+                                    }
+                                    if let Some(state) = &step_state {
+                                        if let Err(error) = state.remember(&calls, &step_reasoning_content) {
+                                            yield Err(error);
+                                            return;
+                                        }
+                                    }
+                                    for call in calls { yield Ok(ProviderEvent::ToolCall { call }); }
+                                },
                                 Err(error) => { yield Err(error); return; }
                             }
                             yield Ok(ProviderEvent::Completed);
@@ -595,6 +731,17 @@ impl Provider for OpenAiChatCompletionsProvider {
 
 #[async_trait]
 impl Provider for DeepSeekChatCompletionsProvider {
+    async fn stream(
+        &self,
+        request: ProviderRequest,
+        cancellation: CancellationToken,
+    ) -> Result<ProviderStream, ProviderError> {
+        self.inner.stream(request, cancellation).await
+    }
+}
+
+#[async_trait]
+impl Provider for StepChatCompletionsProvider {
     async fn stream(
         &self,
         request: ProviderRequest,
@@ -662,6 +809,28 @@ fn chat_messages(messages: &[ProviderMessage]) -> Vec<Value> {
             ProviderMessage::ProviderContext { .. } => None,
         })
         .collect()
+}
+
+fn step_chat_messages(
+    messages: &[ProviderMessage],
+    state: &StepReasoningState,
+) -> Result<Vec<Value>, ProviderError> {
+    let mut wire = Vec::new();
+    for message in messages {
+        let Some(mut wire_message) = chat_messages(std::slice::from_ref(message))
+            .into_iter()
+            .next()
+        else {
+            continue;
+        };
+        if let ProviderMessage::AssistantToolCalls { calls, .. } = message
+            && let Some(reasoning) = state.reasoning_for_calls(calls)?
+        {
+            wire_message["reasoning_content"] = json!(reasoning.as_ref());
+        }
+        wire.push(wire_message);
+    }
+    Ok(wire)
 }
 
 fn deepseek_reasoning(effort: ReasoningEffort) -> (bool, Option<&'static str>) {
@@ -958,6 +1127,14 @@ fn parse_sse_data(data: &str) -> Result<ParsedSseData, ProviderError> {
             .filter(|value| !value.is_empty())
         {
             reasoning_deltas.push(delta);
+        } else if let Some(delta) = choice.delta.reasoning.filter(|value| !value.is_empty()) {
+            reasoning_deltas.push(delta);
+        } else if let Some(delta) = choice
+            .delta
+            .reasoning_text
+            .filter(|value| !value.is_empty())
+        {
+            reasoning_deltas.push(delta);
         }
         if let Some(delta) = choice.delta.content.filter(|value| !value.is_empty()) {
             events.push(ProviderEvent::TextDelta { delta });
@@ -1183,6 +1360,62 @@ mod tests {
         let calls = accumulator.take().unwrap();
         assert_eq!(calls[0].name, "read_file");
         assert_eq!(calls[0].arguments, json!({ "path": "README.md" }));
+    }
+
+    #[test]
+    fn parses_step_reasoning_field_variants_as_private_protocol_data() {
+        let content = parse_sse_data(
+            r#"{"choices":[{"delta":{"reasoning_content":"primary","reasoning":"duplicate"}}]}"#,
+        )
+        .unwrap();
+        assert_eq!(content.reasoning_deltas, vec!["primary"]);
+        assert!(content.events.is_empty());
+
+        let reasoning =
+            parse_sse_data(r#"{"choices":[{"delta":{"reasoning":"alternate"}}]}"#).unwrap();
+        assert_eq!(reasoning.reasoning_deltas, vec!["alternate"]);
+        assert!(reasoning.events.is_empty());
+
+        let reasoning_text =
+            parse_sse_data(r#"{"choices":[{"delta":{"reasoning_text":"legacy"}}]}"#).unwrap();
+        assert_eq!(reasoning_text.reasoning_deltas, vec!["legacy"]);
+        assert!(reasoning_text.events.is_empty());
+    }
+
+    #[test]
+    fn step_reasoning_is_replayed_only_for_matching_tool_calls() {
+        let state = StepReasoningState::default();
+        let calls = vec![tool_call("step-call")];
+        state.remember(&calls, "private Step reasoning").unwrap();
+        let messages = step_chat_messages(
+            &[
+                ProviderMessage::AssistantToolCalls {
+                    text: String::new(),
+                    calls: calls.clone(),
+                },
+                ProviderMessage::ToolResult {
+                    call_id: "step-call".into(),
+                    name: "read_file".into(),
+                    success: true,
+                    output: "file contents".into(),
+                },
+            ],
+            &state,
+        )
+        .unwrap();
+        assert_eq!(messages[0]["reasoning_content"], "private Step reasoning");
+        assert_eq!(messages[0]["tool_calls"][0]["id"], "step-call");
+        assert!(messages[1].get("reasoning_content").is_none());
+
+        let unknown = step_chat_messages(
+            &[ProviderMessage::AssistantToolCalls {
+                text: String::new(),
+                calls: vec![tool_call("other")],
+            }],
+            &state,
+        )
+        .unwrap();
+        assert!(unknown[0].get("reasoning_content").is_none());
     }
 
     #[test]

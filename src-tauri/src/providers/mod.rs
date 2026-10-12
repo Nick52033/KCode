@@ -39,7 +39,9 @@ pub use gemini::GoogleGeminiProvider;
 pub use image::{
     GeneratedImage, ImageGenerationRequest, ImageResponseFormat, OpenAiImageGenerationsProvider,
 };
-pub use openai::{DeepSeekChatCompletionsProvider, OpenAiChatCompletionsProvider};
+pub use openai::{
+    DeepSeekChatCompletionsProvider, OpenAiChatCompletionsProvider, StepChatCompletionsProvider,
+};
 pub use rate_limit::RateLimitRegistry;
 pub(crate) use rate_limit::retry_at_ms;
 pub use responses::OpenAiResponsesProvider;

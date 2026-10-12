@@ -1607,6 +1607,7 @@ impl AgentRuntime {
             let mut transient_retry_count = 0usize;
             let mut protocol_retry_count = 0usize;
             let mut empty_response_retries = 0usize;
+            let mut tool_argument_retry_guidance_added = false;
 
             // 声明需要在重试循环外部的变量
             let mut response = String::new();
@@ -1680,6 +1681,16 @@ impl AgentRuntime {
                         };
 
                         if let Some((delay, transient)) = retry_delay {
+                            if !transient
+                                && !tool_argument_retry_guidance_added
+                                && is_invalid_tool_arguments_error(&error)
+                            {
+                                request.messages.push(ProviderMessage::Text {
+                                    role: MessageRole::User,
+                                    text: TOOL_ARGUMENT_RETRY_GUIDANCE.to_string(),
+                                });
+                                tool_argument_retry_guidance_added = true;
+                            }
                             if error.rate_limit_delay().is_some() {
                                 self.record_rate_limit_retry(&thread_id, &turn_id, &error, delay, transient_retry_count + 1);
                                 publisher.publish(AgentEventEnvelope::new(AgentEvent::ProviderRetryWaiting {
@@ -2152,6 +2163,16 @@ impl AgentRuntime {
                                 None
                             };
                             if let Some((delay, transient)) = retry_delay {
+                                if !transient
+                                    && !tool_argument_retry_guidance_added
+                                    && is_invalid_tool_arguments_error(&error)
+                                {
+                                    request.messages.push(ProviderMessage::Text {
+                                        role: MessageRole::User,
+                                        text: TOOL_ARGUMENT_RETRY_GUIDANCE.to_string(),
+                                    });
+                                    tool_argument_retry_guidance_added = true;
+                                }
                                 if attempt_had_output {
                                     // A retry starts a fresh provider attempt. Clear the
                                     // uncommitted draft first so the UI does not concatenate the
@@ -4287,6 +4308,19 @@ impl AgentRuntime {
             metrics.retry();
         }
     }
+}
+
+const TOOL_ARGUMENT_RETRY_GUIDANCE: &str = "上一次工具调用的参数不是单个有效 JSON 对象。请重新生成完整参数，确保只包含一个 JSON 对象，不要附加任何尾随文本；仍须遵循工具定义及其参数 Schema。";
+
+fn is_invalid_tool_arguments_error(error: &ProviderError) -> bool {
+    if matches!(error, ProviderError::InvalidToolArguments(_)) {
+        return true;
+    }
+    let ProviderError::InvalidResponse(message) = error else {
+        return false;
+    };
+    let message = message.to_ascii_lowercase();
+    message.contains("invalid json arguments") || message.contains("returned invalid json")
 }
 
 fn is_retryable_protocol_stream_error(error: &ProviderError) -> bool {
@@ -9164,7 +9198,17 @@ mod tests {
         assert_eq!(outcome.state, TurnState::Completed);
         let requests = provider.requests();
         assert_eq!(requests.len(), 2);
-        assert_eq!(requests[0].messages, requests[1].messages);
+        assert!(!requests[0].messages.iter().any(|message| matches!(
+            message,
+            ProviderMessage::Text { text, .. } if text == TOOL_ARGUMENT_RETRY_GUIDANCE
+        )));
+        assert!(matches!(
+            requests[1].messages.last(),
+            Some(ProviderMessage::Text {
+                role: MessageRole::User,
+                text
+            }) if text == TOOL_ARGUMENT_RETRY_GUIDANCE
+        ));
     }
 
     #[tokio::test]

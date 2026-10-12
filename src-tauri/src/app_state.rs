@@ -40,7 +40,7 @@ use crate::providers::{
     FallbackProvider, FallbackTarget, GoogleGeminiProvider, OpenAiChatCompletionsProvider,
     OpenAiImageGenerationsProvider, OpenAiResponsesProvider, OsCredentialStore, Provider,
     ProviderCatalogView, ProviderConfig, ProviderConfigError, ProviderConfigStore,
-    ProviderConfigView, ProviderTransport, SaveProviderConfigRequest,
+    ProviderConfigView, ProviderTransport, SaveProviderConfigRequest, StepChatCompletionsProvider,
 };
 use crate::scheduled_tasks::ScheduledTaskStore;
 use crate::storage::knowledge_entity_repository::KnowledgeEntityRepository;
@@ -1519,6 +1519,9 @@ impl AppState {
             {
                 Arc::new(DeepSeekChatCompletionsProvider::new(config, api_key)?)
             }
+            ProviderTransport::OpenAiChatCompletions if step_dialect(&config) => {
+                Arc::new(StepChatCompletionsProvider::new(config, api_key)?)
+            }
             ProviderTransport::OpenAiChatCompletions => {
                 Arc::new(OpenAiChatCompletionsProvider::new(config, api_key)?)
             }
@@ -2191,6 +2194,32 @@ fn deepseek_dialect(config: &ProviderConfig, model_id: &str) -> bool {
     config.transport == ProviderTransport::OpenAiChatCompletions
         && is_deepseek_model(model_id)
         && !stored_model_declares_vision(config, model_id)
+}
+
+/// Step Code's provider source confirms Step uses OpenAI Chat Completions,
+/// while tool rounds need the provider's private reasoning passback. Select
+/// that narrow behavior only for StepFun endpoints or explicitly named Step
+/// providers; unrelated compatible endpoints retain the standard dialect.
+fn step_dialect(config: &ProviderConfig) -> bool {
+    if config.transport != ProviderTransport::OpenAiChatCompletions {
+        return false;
+    }
+    let name = format!("{} {}", config.id, config.name).to_ascii_lowercase();
+    if ["stepfun", "step fun", "阶跃星辰"]
+        .iter()
+        .any(|needle| name.contains(needle))
+    {
+        return true;
+    }
+    url::Url::parse(&config.base_url)
+        .ok()
+        .and_then(|url| url.host_str().map(str::to_ascii_lowercase))
+        .is_some_and(|host| {
+            host == "stepfun.com"
+                || host.ends_with(".stepfun.com")
+                || host == "stepfun.ai"
+                || host.ends_with(".stepfun.ai")
+        })
 }
 
 fn model_supports_vision(

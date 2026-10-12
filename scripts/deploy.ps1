@@ -50,8 +50,9 @@ if (-not $Dest) {
 }
 
 # 1. 程序在运行则先结束进程，避免文件占用
-if (Get-Process -Name "k-coder" -ErrorAction SilentlyContinue) {
-    Get-Process -Name "k-coder" -ErrorAction SilentlyContinue | Stop-Process -Force
+# 兼容新旧二进制名：KCode.exe（mainBinaryName）与历史遗留的 k-coder.exe
+if (Get-Process -Name "KCode", "k-coder" -ErrorAction SilentlyContinue) {
+    Get-Process -Name "KCode", "k-coder" -ErrorAction SilentlyContinue | Stop-Process -Force
     Start-Sleep -Milliseconds 500
 }
 
@@ -64,7 +65,7 @@ New-Item -ItemType Directory -Force -Path $Dest | Out-Null
 # 里面同时住着交付物（k-coder.exe + skills/ tools/）和编译中间件；
 # 不加排除时 deps/ 与 build/ 会被整目录镜像过去，安装目录会从 ~90 MB 涨到 3 GB+。
 $excludeDirs = @("deps", "build", "incremental", ".fingerprint", "examples")
-$excludeFiles = @("k_coder.pdb", "k-coder.d")
+$excludeFiles = @("k_coder.pdb", "k-coder.pdb", "k-coder.d", "KCode.pdb", "KCode.d")
 
 # /MIR 不会删除目标目录里被 /XD 排除掉的旧内容，历史遗留的中间件需要先手工清掉
 foreach ($name in $excludeDirs) {
@@ -89,7 +90,7 @@ if ($LASTEXITCODE -ge 8) {
 Write-Host "部署完成: $source -> $Dest" -ForegroundColor Green
 
 # 4. 重新打开 k-coder（除非指定 NoRestart）
-$exe = Join-Path $Dest "k-coder.exe"
+$exe = Join-Path $Dest "KCode.exe"
 if (-not $NoRestart) {
     if (Test-Path $exe) {
         Start-Process -FilePath $exe
