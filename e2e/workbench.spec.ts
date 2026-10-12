@@ -2961,11 +2961,11 @@ test("keeps the K brand and renders a distinct command-pulse welcome mark", asyn
   await page.screenshot({ path: testInfo.outputPath(`command-pulse-welcome-k-brand-${testInfo.project.name}.png`), fullPage: true });
 });
 
-test("uses the CodeBuddy blue K and rebuilds the native Windows icon resource", () => {
+test("uses the black-and-white K brand and rebuilds the native Windows icon resource", () => {
   const iconSource = readFileSync(new URL("../assets/app-icon.svg", import.meta.url), "utf8");
   const buildScript = readFileSync(new URL("../src-tauri/build.rs", import.meta.url), "utf8");
-  expect(iconSource).toContain('fill="#2F6FE4"');
-  expect(iconSource).toMatch(/<path\s+d="M154 112h72v119l104-119h88L298 247l128 153h-91L250 294l-24 27v79h-72V112Z"\s+fill="#fff"\s*\/>/);
+  expect(iconSource).toContain('stop-color="#000000"');
+  expect(iconSource).toContain('stroke="url(#kcode-glyph)"');
   expect(buildScript).toContain('println!("cargo:rerun-if-changed=icons/icon.ico");');
 });
 
