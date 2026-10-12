@@ -131,7 +131,7 @@ pub(super) fn read_observation_result(
     mut result: ToolResult,
     decision: ReadObservationDecision,
 ) -> ToolResult {
-    if decision == ReadObservationDecision::AlreadyCovered {
+    if decision != ReadObservationDecision::NewCoverage {
         if !result.metadata.is_object() {
             result.metadata = json!({});
         }
@@ -139,6 +139,12 @@ pub(super) fn read_observation_result(
             Value::String("read_observation_already_covered".into());
         result.metadata["contentSuppressed"] = Value::Bool(false);
         result.metadata["turnContinues"] = Value::Bool(true);
+    } else {
+        if !result.metadata.is_object() {
+            result.metadata = json!({});
+        }
+        result.metadata["observationStatus"] =
+            Value::String("read_observation_new_coverage".into());
     }
     result
 }

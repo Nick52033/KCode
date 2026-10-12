@@ -155,12 +155,6 @@ async fn varied_read_only_inspections_reach_the_productive_progress_guard() {
                 Ok(ProviderEvent::Completed),
             ]
         })
-        .chain(std::iter::once(vec![
-            Ok(ProviderEvent::TextDelta {
-                delta: "finished after inspecting everything".into(),
-            }),
-            Ok(ProviderEvent::Completed),
-        ]))
         .collect();
     let provider = Arc::new(FakeProvider::script(scripts));
     let publisher = Arc::new(UserInputResolvingPublisher::new(
@@ -184,15 +178,11 @@ async fn varied_read_only_inspections_reach_the_productive_progress_guard() {
         .unwrap();
 
     assert_eq!(outcome.state, TurnState::Failed, "{outcome:?}");
-    assert!(
-        outcome
-            .error
-            .as_deref()
-            .is_some_and(|error| error.contains(&format!(
-                "连续 {MAX_PROVIDER_CALLS_WITHOUT_PRODUCTIVE_PROGRESS} 次模型请求没有产生实质进展"
-            ))),
-        "{outcome:?}"
-    );
+    assert!(outcome.error.as_deref().is_some_and(|error| {
+        error.contains(&format!(
+            "连续 {MAX_PROVIDER_CALLS_WITHOUT_PRODUCTIVE_PROGRESS} 次模型请求没有产生实质进展"
+        ))
+    }));
     assert_eq!(provider.requests().len(), expected_provider_calls);
 }
 
@@ -248,7 +238,7 @@ async fn varied_search_observations_reach_the_productive_progress_guard() {
 }
 
 #[tokio::test]
-async fn distinct_read_coverage_reaches_the_productive_progress_guard() {
+async fn distinct_read_coverage_resets_the_productive_progress_guard() {
     let (directory, _repository, runtime, thread_id) = runtime_fixture().await;
     let body = (1..=MAX_PROVIDER_CALLS_WITHOUT_PRODUCTIVE_PROGRESS)
         .map(|line| format!("line {line}\n"))
@@ -279,15 +269,10 @@ async fn distinct_read_coverage_reaches_the_productive_progress_guard() {
         .await
         .unwrap();
 
-    assert_eq!(outcome.state, TurnState::Failed, "{outcome:?}");
-    assert!(outcome.error.as_deref().is_some_and(|error| {
-        error.contains(&format!(
-            "连续 {MAX_PROVIDER_CALLS_WITHOUT_PRODUCTIVE_PROGRESS} 次模型请求没有产生实质进展"
-        ))
-    }));
+    assert_ne!(outcome.state, TurnState::Failed, "{outcome:?}");
     assert_eq!(
         provider.requests().len(),
-        MAX_PROVIDER_CALLS_WITHOUT_PRODUCTIVE_PROGRESS as usize
+        (MAX_PROVIDER_CALLS_WITHOUT_PRODUCTIVE_PROGRESS + 1) as usize
     );
 }
 
@@ -346,7 +331,7 @@ fn productive_progress_counts_changes_plan_completion_and_new_verification_resul
         metadata: json!({}),
     };
     let read_result = versioned_read_result("source.txt", "rev-1", 1, 1);
-    assert!(!tracker.observe_tool_result(1, 1, &read, &read_result));
+    assert!(tracker.observe_tool_result(1, 1, &read, &read_result, true));
 
     let search = ToolCall {
         id: "search".into(),
@@ -359,7 +344,7 @@ fn productive_progress_counts_changes_plan_completion_and_new_verification_resul
         output: "src/lib.rs: TODO".into(),
         metadata: json!({"exitCode": 0}),
     };
-    assert!(!tracker.observe_tool_result(2, 2, &search, &search_result));
+    assert!(!tracker.observe_tool_result(2, 2, &search, &search_result, false));
 
     let verification = ToolCall {
         id: "test".into(),
@@ -372,8 +357,8 @@ fn productive_progress_counts_changes_plan_completion_and_new_verification_resul
         output: "test result: ok".into(),
         metadata: json!({"exitCode": 0}),
     };
-    assert!(tracker.observe_tool_result(3, 3, &verification, &verification_result));
-    assert!(!tracker.observe_tool_result(20, 20, &verification, &verification_result));
+    assert!(tracker.observe_tool_result(3, 3, &verification, &verification_result, false));
+    assert!(!tracker.observe_tool_result(20, 20, &verification, &verification_result, false));
     let repeated_verification_with_different_output = ToolResult {
         output: "another test run took 2 seconds".into(),
         ..verification_result.clone()
@@ -382,7 +367,8 @@ fn productive_progress_counts_changes_plan_completion_and_new_verification_resul
         25,
         25,
         &verification,
-        &repeated_verification_with_different_output
+        &repeated_verification_with_different_output,
+        false
     ));
     assert!(tracker.failure_reason(40, 40).is_none());
     assert!(
@@ -407,9 +393,9 @@ fn productive_progress_counts_changes_plan_completion_and_new_verification_resul
         output: "updated".into(),
         metadata: json!({"changeSet": {"files": [{"path": "source.txt"}]}}),
     };
-    assert!(tracker.observe_tool_result(41, 41, &write, &write_result));
+    assert!(tracker.observe_tool_result(41, 41, &write, &write_result, false));
     assert!(tracker.failure_reason(42, 42).is_none());
-    assert!(tracker.observe_tool_result(42, 42, &verification, &verification_result));
+    assert!(tracker.observe_tool_result(42, 42, &verification, &verification_result, false));
     assert!(tracker.failure_reason(42, 42).is_none());
 
     let plan = ToolCall {
@@ -426,8 +412,35 @@ fn productive_progress_counts_changes_plan_completion_and_new_verification_resul
         output: "plan saved".into(),
         metadata: json!({"revision": 2}),
     };
-    assert!(tracker.observe_tool_result(43, 43, &plan, &plan_result));
-    assert!(!tracker.observe_tool_result(44, 44, &plan, &plan_result));
+    assert!(tracker.observe_tool_result(43, 43, &plan, &plan_result, false));
+    assert!(!tracker.observe_tool_result(44, 44, &plan, &plan_result, false));
+}
+
+#[test]
+fn progress_nudges_escalate_and_reset_after_productive_progress() {
+    let mut tracker = ProductiveProgressTracker::default();
+    assert_eq!(tracker.progress_nudge(5, 11), None);
+    assert_eq!(
+        tracker.progress_nudge(6, 12),
+        Some(PRODUCTIVE_PROGRESS_NUDGE)
+    );
+    assert_eq!(tracker.progress_nudge(11, 23), None);
+    assert_eq!(
+        tracker.progress_nudge(12, 24),
+        Some(REPEATED_PRODUCTIVE_PROGRESS_NUDGE)
+    );
+    assert_eq!(
+        tracker.progress_nudge(18, 36),
+        Some(FINAL_PRODUCTIVE_PROGRESS_NUDGE)
+    );
+    assert_eq!(tracker.progress_nudge(19, 39), None);
+
+    tracker.mark_progress(19, 39);
+    assert_eq!(tracker.progress_nudge(24, 49), None);
+    assert_eq!(
+        tracker.progress_nudge(25, 51),
+        Some(PRODUCTIVE_PROGRESS_NUDGE)
+    );
 }
 
 #[tokio::test]

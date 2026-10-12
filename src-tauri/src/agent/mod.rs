@@ -63,13 +63,15 @@ const MAX_IDENTICAL_TOOL_CALLS: usize = 2;
 const MAX_TOOL_FAILURE_OUTPUT_BYTES: usize = 4 * 1024;
 const PROGRESS_CHECK_WINDOW: usize = 5;
 const MAX_NO_PROGRESS_WINDOWS: usize = 3;
-/// Stop a Turn that keeps producing new observations but never advances the work.
-/// This is cumulative across soft continuations and context compactions.
+/// Stop a Turn that keeps producing observations but never advances the work.
+/// Counts span continuations and compactions.
 const MAX_PROVIDER_CALLS_WITHOUT_PRODUCTIVE_PROGRESS: u32 = 20;
 const MAX_TOOL_CALLS_WITHOUT_PRODUCTIVE_PROGRESS: u32 = 40;
 const MAX_PROVIDER_CALLS_BEFORE_PROGRESS_NUDGE: u32 = 6;
 const MAX_TOOL_CALLS_BEFORE_PROGRESS_NUDGE: u32 = 12;
 const PRODUCTIVE_PROGRESS_NUDGE: &str = "[进展提醒]\n最近多轮调用新增了观察记录，但没有推进计划或工作区变更。不要重复汇报计划状态或重复检查已确认的事实；从剩余工作中选一个具体动作并继续执行。如果现有信息足够，就开始实施并做针对性验证；如果有明确阻塞，简洁说明阻塞原因与缺少的条件后结束本轮。\n";
+const REPEATED_PRODUCTIVE_PROGRESS_NUDGE: &str = "[进展提醒·再次检查]\n上一条提醒后仍只有调查，没有实际推进。停止新增泛化搜索和重复读取；使用已经确认的信息做出最小必要修改并运行针对性验证。如果无法实施，结束本轮并明确说明具体阻塞和缺少的输入。\n";
+const FINAL_PRODUCTIVE_PROGRESS_NUDGE: &str = "[进展提醒·最后一次]\n本 Turn 已接近无进展熔断。请在本次响应中完成一个具体修改并验证，或直接结束并报告无法继续的具体原因；不要再做宽泛探索或重复读取。\n";
 /// Allow a model a couple of chances to repair one patch problem, then stop
 /// instead of spending the rest of a Turn rereading files and producing more
 /// variants of the same invalid patch.
@@ -278,34 +280,36 @@ struct ProductiveProgressTracker {
     completed_plan_steps: usize,
     workspace_revision: u64,
     productive_command_results: HashSet<u64>,
-    progress_nudge_sent: bool,
+    progress_nudge_stage: u32,
 }
 
 impl ProductiveProgressTracker {
     fn mark_progress(&mut self, provider_call_count: u32, tool_call_count: u32) {
         self.last_progress_provider_call = provider_call_count;
         self.last_progress_tool_call = tool_call_count;
-        self.progress_nudge_sent = false;
+        self.progress_nudge_stage = 0;
     }
 
-    fn should_send_progress_nudge(
+    fn progress_nudge(
         &mut self,
         provider_call_count: u32,
         tool_call_count: u32,
-    ) -> bool {
-        if self.progress_nudge_sent {
-            return false;
-        }
+    ) -> Option<&'static str> {
         let stalled_provider_calls =
             provider_call_count.saturating_sub(self.last_progress_provider_call);
         let stalled_tool_calls = tool_call_count.saturating_sub(self.last_progress_tool_call);
-        if stalled_provider_calls >= MAX_PROVIDER_CALLS_BEFORE_PROGRESS_NUDGE
-            || stalled_tool_calls >= MAX_TOOL_CALLS_BEFORE_PROGRESS_NUDGE
-        {
-            self.progress_nudge_sent = true;
-            return true;
+        let nudge_stage = (stalled_provider_calls / MAX_PROVIDER_CALLS_BEFORE_PROGRESS_NUDGE)
+            .max(stalled_tool_calls / MAX_TOOL_CALLS_BEFORE_PROGRESS_NUDGE)
+            .min(3);
+        if nudge_stage <= self.progress_nudge_stage {
+            return None;
         }
-        false
+        self.progress_nudge_stage = nudge_stage;
+        Some(match nudge_stage {
+            1 => PRODUCTIVE_PROGRESS_NUDGE,
+            2 => REPEATED_PRODUCTIVE_PROGRESS_NUDGE,
+            _ => FINAL_PRODUCTIVE_PROGRESS_NUDGE,
+        })
     }
 
     fn observe_tool_result(
@@ -314,9 +318,11 @@ impl ProductiveProgressTracker {
         tool_call_count: u32,
         call: &ToolCall,
         result: &ToolResult,
+        new_read_coverage: bool,
     ) -> bool {
         let mut workspace_changed = false;
         let productive = match call.name.as_str() {
+            "read_file" if new_read_coverage => true,
             _ if is_read_only_observation_tool(&call.name) => false,
             "run_command" => {
                 let Some(signature) =
@@ -1459,10 +1465,10 @@ impl AgentRuntime {
                 .runtime_instruction_provider
                 .compile()
                 .map_err(AgentRuntimeError::RuntimeInstructions)?;
-            if productive_progress
-                .should_send_progress_nudge(provider_call_index, tool_call_count)
+            if let Some(nudge) =
+                productive_progress.progress_nudge(provider_call_index, tool_call_count)
             {
-                request_runtime_instructions.push_str(PRODUCTIVE_PROGRESS_NUDGE);
+                request_runtime_instructions.push_str(nudge);
             }
             if previous_turn_interrupted {
                 request_runtime_instructions.push_str(instructions::INTERRUPTED_TASK);
@@ -2796,6 +2802,8 @@ impl AgentRuntime {
                         tool_call_count,
                         &call,
                         &result,
+                        result.metadata.get("observationStatus").and_then(Value::as_str)
+                            == Some("read_observation_new_coverage"),
                     );
                 }
 
