@@ -381,7 +381,7 @@ impl MarketplaceClient {
             .map_err(|error| MarketplaceError::Request(error.to_string()))?;
         Ok(Self {
             client,
-            user_agent: format!("k-coder/{}", env!("CARGO_PKG_VERSION")),
+            user_agent: format!("KCode/{}", env!("CARGO_PKG_VERSION")),
         })
     }
 
@@ -829,7 +829,7 @@ impl TempDirectory {
     pub fn new(prefix: &str) -> Result<Self, MarketplaceError> {
         let base = std::env::temp_dir();
         for _ in 0..8 {
-            let candidate = base.join(format!("k-coder-{prefix}-{}", Uuid::new_v4().simple()));
+            let candidate = base.join(format!("KCode-{prefix}-{}", Uuid::new_v4().simple()));
             match fs::create_dir(&candidate) {
                 Ok(()) => return Ok(Self { path: candidate }),
                 Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
@@ -1267,7 +1267,7 @@ mod tests {
 
     #[test]
     fn sha256_digests_match_and_mismatch() {
-        let bytes = b"k-coder marketplace fixture";
+        let bytes = b"KCode marketplace fixture";
         let expected = hex_digest(&Sha256::digest(bytes));
         assert_eq!(expected.len(), 64);
         assert!(expected.chars().all(|ch| ch.is_ascii_hexdigit()));

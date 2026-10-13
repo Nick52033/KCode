@@ -59,12 +59,12 @@ if ($Action -eq 'python') {
     if (-not $artifactResult.node -or -not $artifactResult.artifactToolVersion) { throw 'Bundled Node/artifact-tool is unavailable; prepare an installed artifact runtime first.' }
     if ([IO.Path]::GetExtension($artifactScript) -notin @('.mjs', '.js', '.cjs')) { throw 'Node requires a JavaScript script.' }
     $artifactLoader = Resolve-ArtifactScript 'scripts/plugin-artifact-register.mjs'
-    $artifactPreviousModules = $env:K_CODER_ARTIFACT_NODE_MODULES
+    $artifactPreviousModules = $env:KCODE_ARTIFACT_NODE_MODULES
     try {
-        $env:K_CODER_ARTIFACT_NODE_MODULES = $artifactModules
+        $env:KCODE_ARTIFACT_NODE_MODULES = $artifactModules
         & $artifactNode --import ([Uri]$artifactLoader).AbsoluteUri $artifactScript @ScriptArguments
     } finally {
-        $env:K_CODER_ARTIFACT_NODE_MODULES = $artifactPreviousModules
+        $env:KCODE_ARTIFACT_NODE_MODULES = $artifactPreviousModules
     }
 }
 exit $LASTEXITCODE

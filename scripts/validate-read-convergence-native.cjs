@@ -1,4 +1,4 @@
-// Requires isolated pnpm tauri dev: identifier com.kcoder.validation.readnonfatal,
+// Requires isolated pnpm tauri dev: identifier com.kcode.validation.readnonfatal,
 // Vite 1496, WebView2 CDP 9496. Real runtime/IPC/files/UI, local deterministic SSE.
 const { chromium, expect } = require('@playwright/test');
 const assert = require('node:assert/strict');
@@ -10,7 +10,7 @@ const fs = require('node:fs');
   let browser, page, fixtureError, scenario, stage = 0;
   const checks = [];
   const workspace = path.resolve('outputs/read-convergence-workspace');
-  const dataRoot = path.join(process.env.APPDATA, 'com.kcoder.validation.readnonfatal', 'runtime-data');
+  const dataRoot = path.join(process.env.APPDATA, 'com.kcode.validation.readnonfatal', 'runtime-data');
   const providerId = 'read-convergence-native-fixture';
   fs.mkdirSync(workspace, { recursive: true });
   fs.writeFileSync(path.join(workspace, 'source.txt'), Array.from({ length: 2000 }, (_, i) =>

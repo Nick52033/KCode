@@ -13,7 +13,7 @@ use super::common::{classify_event_error, read_error_details, redact_error, reda
 use super::sse::SseDecoder;
 use super::{
     Provider, ProviderConfig, ProviderError, ProviderEvent, ProviderMessage, ProviderRequest,
-    ProviderStream,
+    ProviderStream, STEP_CHAT_COMPLETIONS_REPLAY_PROVIDER,
 };
 use crate::protocol::{MessageRole, ReasoningEffort, TokenUsage, TokenUsageDetails, ToolCall};
 
@@ -23,6 +23,9 @@ const MAX_DEEPSEEK_REASONING_BYTES: usize = 2 * 1024 * 1024;
 const MAX_DEEPSEEK_REASONING_CACHE_BYTES: usize = 4 * 1024 * 1024;
 const MAX_STEP_REASONING_CACHE_BYTES: usize = 4 * 1024 * 1024;
 const MAX_DEEPSEEK_CACHED_TOOL_CALLS: usize = 512;
+const STEP_REPLAY_TYPE: &str = "step_reasoning_replay";
+const STEP_REPLAY_VERSION: u64 = 1;
+const STEP_REPLAY_CONTINUATION: &str = "Continue from the preceding observations. If the requested work is already applied and sufficiently verified, return the final answer now. Call another tool only for a specific unresolved fact; do not reread unchanged overlapping file ranges merely to reconfirm them.";
 const LEGACY_DEEPSEEK_TOOL_CALLS_MARKER: &str = "[Historical tool calls]";
 const LEGACY_DEEPSEEK_TOOL_RESULT_MARKER: &str = "[Historical tool result for ";
 const DEEPSEEK_RETRY_CONTINUATION: &str = "Continue from the preceding observations. If the requested work is already applied and sufficiently verified, return the final answer now. Call another tool only for a specific unresolved fact; do not reread unchanged overlapping file ranges merely to reconfirm them.";
@@ -272,7 +275,9 @@ impl OpenAiChatCompletionsProvider {
             ChatCompletionsDialect::DeepSeek(state) => {
                 deepseek_chat_messages(&request.messages, state, deepseek_thinking_enabled)?
             }
-            ChatCompletionsDialect::Step(state) => step_chat_messages(&request.messages, state)?,
+            ChatCompletionsDialect::Step(state) => {
+                step_chat_messages(&request.messages, state, &self.config.id, &request.model)?
+            }
         };
         let mut payload = json!({
             "model": request.model,
@@ -556,6 +561,8 @@ impl Provider for OpenAiChatCompletionsProvider {
             ChatCompletionsDialect::Step(state) => Some(state.clone()),
             _ => None,
         };
+        let step_provider_id = self.config.id.clone();
+        let step_model = request.model.clone();
 
         let mut response = self
             .send_request(endpoint.clone(), &payload, &cancellation)
@@ -701,6 +708,12 @@ impl Provider for OpenAiChatCompletionsProvider {
                                                             yield Err(error);
                                                             return;
                                                         }
+                                                        if !calls.is_empty() && !step_reasoning_content.trim().is_empty() {
+                                                            yield Ok(ProviderEvent::ProviderContext {
+                                                                provider: STEP_CHAT_COMPLETIONS_REPLAY_PROVIDER.to_string(),
+                                                                item: step_replay_item(&step_provider_id, &step_model, &calls, &step_reasoning_content),
+                                                            });
+                                                        }
                                                     }
                                                     for call in calls { yield Ok(ProviderEvent::ToolCall { call }); }
                                                 },
@@ -732,6 +745,12 @@ impl Provider for OpenAiChatCompletionsProvider {
                                                         if let Err(error) = state.remember(&calls, &step_reasoning_content) {
                                                             yield Err(error);
                                                             return;
+                                                        }
+                                                        if !calls.is_empty() && !step_reasoning_content.trim().is_empty() {
+                                                            yield Ok(ProviderEvent::ProviderContext {
+                                                                provider: STEP_CHAT_COMPLETIONS_REPLAY_PROVIDER.to_string(),
+                                                                item: step_replay_item(&step_provider_id, &step_model, &calls, &step_reasoning_content),
+                                                            });
                                                         }
                                                     }
                                                     for call in calls { yield Ok(ProviderEvent::ToolCall { call }); }
@@ -779,6 +798,12 @@ impl Provider for OpenAiChatCompletionsProvider {
                                         if let Err(error) = state.remember(&calls, &step_reasoning_content) {
                                             yield Err(error);
                                             return;
+                                        }
+                                        if !calls.is_empty() && !step_reasoning_content.trim().is_empty() {
+                                            yield Ok(ProviderEvent::ProviderContext {
+                                                provider: STEP_CHAT_COMPLETIONS_REPLAY_PROVIDER.to_string(),
+                                                item: step_replay_item(&step_provider_id, &step_model, &calls, &step_reasoning_content),
+                                            });
                                         }
                                     }
                                     for call in calls { yield Ok(ProviderEvent::ToolCall { call }); }
@@ -882,23 +907,135 @@ fn chat_messages(messages: &[ProviderMessage]) -> Vec<Value> {
 fn step_chat_messages(
     messages: &[ProviderMessage],
     state: &StepReasoningState,
+    provider_id: &str,
+    model: &str,
 ) -> Result<Vec<Value>, ProviderError> {
-    let mut wire = Vec::new();
+    let mut persisted_reasoning = HashMap::new();
     for message in messages {
-        let Some(mut wire_message) = chat_messages(std::slice::from_ref(message))
-            .into_iter()
-            .next()
-        else {
-            continue;
-        };
-        if let ProviderMessage::AssistantToolCalls { calls, .. } = message
-            && let Some(reasoning) = state.reasoning_for_calls(calls)?
+        if let ProviderMessage::ProviderContext { provider, item } = message
+            && provider == STEP_CHAT_COMPLETIONS_REPLAY_PROVIDER
         {
-            wire_message["reasoning_content"] = json!(reasoning.as_ref());
+            if let Some((call_ids, reasoning)) = parse_step_replay_item(item, provider_id, model) {
+                for call_id in call_ids {
+                    persisted_reasoning.insert(call_id, reasoning.clone());
+                }
+            }
         }
-        wire.push(wire_message);
+    }
+
+    let mut wire = Vec::new();
+    let mut native_call_ids = HashSet::new();
+    let mut degraded_tool_history = false;
+    for message in messages {
+        match message {
+            ProviderMessage::AssistantToolCalls { text, calls } => {
+                let reasoning = state.reasoning_for_calls(calls)?.or_else(|| {
+                    let first = calls.first()?.id.as_str();
+                    let reasoning = persisted_reasoning.get(first)?.clone();
+                    calls
+                        .iter()
+                        .all(|call| persisted_reasoning.get(&call.id) == Some(&reasoning))
+                        .then_some(reasoning)
+                });
+                if let Some(reasoning) = reasoning {
+                    let Some(mut wire_message) = chat_messages(std::slice::from_ref(message))
+                        .into_iter()
+                        .next()
+                    else {
+                        continue;
+                    };
+                    wire_message["reasoning_content"] = json!(reasoning.as_ref());
+                    native_call_ids.extend(calls.iter().map(|call| call.id.clone()));
+                    wire.push(wire_message);
+                } else {
+                    degraded_tool_history = true;
+                    push_plain_assistant_context(&mut wire, text.clone());
+                }
+            }
+            ProviderMessage::ToolResult {
+                call_id,
+                name,
+                success,
+                output,
+            } if native_call_ids.contains(call_id) => wire.push(json!({
+                "role": "tool",
+                "tool_call_id": call_id,
+                "content": if output.is_empty() { "(no output)" } else { output }
+            })),
+            ProviderMessage::ToolResult {
+                name,
+                success,
+                output,
+                ..
+            } => push_plain_assistant_context(
+                &mut wire,
+                historical_tool_observation(name, *success, output),
+            ),
+            ProviderMessage::ProviderContext { .. } => {}
+            _ => {
+                let Some(wire_message) = chat_messages(std::slice::from_ref(message))
+                    .into_iter()
+                    .next()
+                else {
+                    continue;
+                };
+                wire.push(wire_message);
+            }
+        }
+    }
+    if degraded_tool_history
+        && wire.last().and_then(|message| message["role"].as_str()) == Some("assistant")
+    {
+        wire.push(json!({
+            "role": "user",
+            "content": STEP_REPLAY_CONTINUATION,
+        }));
     }
     Ok(wire)
+}
+
+fn step_replay_item(provider_id: &str, model: &str, calls: &[ToolCall], reasoning: &str) -> Value {
+    json!({
+        "type": STEP_REPLAY_TYPE,
+        "version": STEP_REPLAY_VERSION,
+        "providerId": provider_id,
+        "model": model,
+        "callIds": calls.iter().map(|call| call.id.as_str()).collect::<Vec<_>>(),
+        "reasoningContent": reasoning,
+    })
+}
+
+fn parse_step_replay_item(
+    item: &Value,
+    expected_provider_id: &str,
+    expected_model: &str,
+) -> Option<(Vec<String>, Arc<str>)> {
+    if item.get("type").and_then(Value::as_str) != Some(STEP_REPLAY_TYPE)
+        || item.get("version").and_then(Value::as_u64) != Some(STEP_REPLAY_VERSION)
+        || item.get("providerId").and_then(Value::as_str) != Some(expected_provider_id)
+        || item.get("model").and_then(Value::as_str) != Some(expected_model)
+    {
+        return None;
+    }
+    let call_ids = item
+        .get("callIds")
+        .and_then(Value::as_array)?
+        .iter()
+        .map(|id| {
+            id.as_str()
+                .filter(|id| !id.trim().is_empty())
+                .map(str::to_owned)
+        })
+        .collect::<Option<Vec<_>>>()?;
+    if call_ids.is_empty() || call_ids.len() > MAX_DEEPSEEK_CACHED_TOOL_CALLS {
+        return None;
+    }
+    let reasoning = item
+        .get("reasoningContent")
+        .and_then(Value::as_str)
+        .filter(|reasoning| !reasoning.trim().is_empty())
+        .filter(|reasoning| reasoning.len() <= MAX_DEEPSEEK_REASONING_BYTES)?;
+    Some((call_ids, Arc::from(reasoning)))
 }
 
 fn deepseek_reasoning(effort: ReasoningEffort) -> (bool, Option<&'static str>) {
@@ -1469,6 +1606,8 @@ mod tests {
                 },
             ],
             &state,
+            "step-provider",
+            "step-5-preview",
         )
         .unwrap();
         assert_eq!(messages[0]["reasoning_content"], "private Step reasoning");
@@ -1476,14 +1615,112 @@ mod tests {
         assert!(messages[1].get("reasoning_content").is_none());
 
         let unknown = step_chat_messages(
-            &[ProviderMessage::AssistantToolCalls {
-                text: String::new(),
-                calls: vec![tool_call("other")],
-            }],
+            &[
+                ProviderMessage::AssistantToolCalls {
+                    text: "检查文件".into(),
+                    calls: vec![tool_call("other")],
+                },
+                ProviderMessage::ToolResult {
+                    call_id: "other".into(),
+                    name: "read_file".into(),
+                    success: true,
+                    output: "file contents".into(),
+                },
+            ],
             &state,
+            "step-provider",
+            "step-5-preview",
         )
         .unwrap();
         assert!(unknown[0].get("reasoning_content").is_none());
+        assert!(unknown[0].get("tool_calls").is_none());
+        assert!(unknown[0]["content"].as_str().unwrap().contains("检查文件"));
+        assert!(
+            unknown[0]["content"]
+                .as_str()
+                .unwrap()
+                .contains("Earlier information from read_file")
+        );
+    }
+
+    #[test]
+    fn step_reasoning_replay_context_survives_provider_rebuild() {
+        let calls = vec![tool_call("step-call-rebuilt")];
+        let messages = step_chat_messages(
+            &[
+                ProviderMessage::ProviderContext {
+                    provider: STEP_CHAT_COMPLETIONS_REPLAY_PROVIDER.into(),
+                    item: step_replay_item(
+                        "step-provider",
+                        "step-5-preview",
+                        &calls,
+                        "persisted Step reasoning",
+                    ),
+                },
+                ProviderMessage::AssistantToolCalls {
+                    text: String::new(),
+                    calls: calls.clone(),
+                },
+                ProviderMessage::ToolResult {
+                    call_id: "step-call-rebuilt".into(),
+                    name: "read_file".into(),
+                    success: true,
+                    output: "file contents".into(),
+                },
+            ],
+            &StepReasoningState::default(),
+            "step-provider",
+            "step-5-preview",
+        )
+        .unwrap();
+        assert_eq!(messages[0]["reasoning_content"], "persisted Step reasoning");
+        assert_eq!(messages[0]["tool_calls"][0]["id"], "step-call-rebuilt");
+    }
+
+    #[test]
+    fn step_reasoning_replay_context_is_bound_to_provider_and_model() {
+        let calls = vec![tool_call("step-call-bound")];
+        let context = ProviderMessage::ProviderContext {
+            provider: STEP_CHAT_COMPLETIONS_REPLAY_PROVIDER.into(),
+            item: step_replay_item(
+                "step-provider",
+                "step-5-preview",
+                &calls,
+                "persisted Step reasoning",
+            ),
+        };
+        for (provider_id, model) in [
+            ("other-provider", "step-5-preview"),
+            ("step-provider", "other-model"),
+        ] {
+            let messages = step_chat_messages(
+                &[
+                    context.clone(),
+                    ProviderMessage::AssistantToolCalls {
+                        text: "检查文件".into(),
+                        calls: calls.clone(),
+                    },
+                    ProviderMessage::ToolResult {
+                        call_id: "step-call-bound".into(),
+                        name: "read_file".into(),
+                        success: true,
+                        output: "file contents".into(),
+                    },
+                ],
+                &StepReasoningState::default(),
+                provider_id,
+                model,
+            )
+            .unwrap();
+            assert!(messages[0].get("reasoning_content").is_none());
+            assert!(messages[0].get("tool_calls").is_none());
+            assert!(
+                messages[0]["content"]
+                    .as_str()
+                    .unwrap()
+                    .contains("Earlier information from read_file")
+            );
+        }
     }
 
     #[tokio::test]
@@ -1566,6 +1803,12 @@ mod tests {
             summary_index < call_index,
             "the visible Step reasoning should finish before the tool starts"
         );
+        assert!(first_events.iter().any(|event| matches!(
+            event,
+            ProviderEvent::ProviderContext { provider, item }
+                if provider == STEP_CHAT_COMPLETIONS_REPLAY_PROVIDER
+                    && item["reasoningContent"] == "先检查文件，确认结果。"
+        )));
         let returned_call = first_events.into_iter().find_map(|event| match event {
             ProviderEvent::ToolCall { call } => Some(call),
             _ => None,

@@ -341,7 +341,7 @@
 "use strict";
 (function () {
   const PROTOCOL_VERSION = 1;
-  const STORAGE_KEY = "k-coder-mobile-credentials";
+  const STORAGE_KEY = "KCode-mobile-credentials";
   const MAX_BACKOFF_MS = 15000;
   /** 单个条目在手机上保留的最大字符数。超出后只保留末尾，避免长 Turn 撑爆内存。 */
   const MAX_ENTRY_CHARS = 32000;
@@ -566,7 +566,7 @@
       return;
     }
     try {
-      const params = { protocolVersion: PROTOCOL_VERSION, client: { name: "k-coder-mobile", version: "0.1" } };
+      const params = { protocolVersion: PROTOCOL_VERSION, client: { name: "KCode-mobile", version: "0.1" } };
       if (state.accessToken && Date.now() < state.tokenExpiresAt - 30000) {
         params.accessToken = state.accessToken;
       } else {

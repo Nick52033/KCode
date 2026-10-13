@@ -1,10 +1,10 @@
-﻿# scripts/deploy.ps1 — 构建后自动部署（可移植版）
-# 流程：结束正在运行的 k-coder -> 增量同步到目标目录 -> 重新启动 k-coder
+# scripts/deploy.ps1 — 构建后自动部署（可移植版）
+# 流程：结束正在运行的 KCode -> 增量同步到目标目录 -> 重新启动 KCode
 # 关键设计：脚本会把真正的部署动作转交给一个独立进程（detached），
-#           避免自身作为 k-coder 的子进程被连带终止。
+#           避免自身作为 KCode 的子进程被连带终止。
 param(
     [string]$Dest,
-    [switch]$NoRestart,   # 部署后不重新打开 k-coder
+    [switch]$NoRestart,   # 部署后不重新打开 KCode
     [switch]$Worker       # 内部标记：表示当前已是独立 worker 进程，直接干活
 )
 
@@ -30,7 +30,7 @@ if (-not $Worker) {
 }
 
 # ============================================================
-# 以下为 worker 进程逻辑（独立于 k-coder 进程树）
+# 以下为 worker 进程逻辑（独立于 KCode 进程树）
 # ============================================================
 
 # 源目录基于脚本位置自动推导，任何机器 clone 后都能用
@@ -44,13 +44,13 @@ if (-not $Dest -and (Test-Path (Join-Path $PSScriptRoot "deploy.config.json"))) 
 }
 if (-not $Dest) {
     Write-Host "未指定部署目录，用法：" -ForegroundColor Yellow
-    Write-Host '  powershell -File scripts/deploy.ps1 -Dest "E:\Program Files\k-coder"'
+    Write-Host '  powershell -File scripts/deploy.ps1 -Dest "E:\Program Files\KCode"'
     Write-Host "  或设置环境变量 KC_DEPLOY_DEST"
     exit 1
 }
 
 # 1. 程序在运行则先结束进程，避免文件占用
-# 兼容新旧二进制名：KCode.exe（mainBinaryName）与历史遗留的 k-coder.exe
+# 兼容新旧二进制名：KCode.exe（当前）与历史遗留的 k-coder.exe
 if (Get-Process -Name "KCode", "k-coder" -ErrorAction SilentlyContinue) {
     Get-Process -Name "KCode", "k-coder" -ErrorAction SilentlyContinue | Stop-Process -Force
     Start-Sleep -Milliseconds 500
@@ -62,10 +62,10 @@ New-Item -ItemType Directory -Force -Path $Dest | Out-Null
 # 3. 增量镜像同步（robocopy 退出码 0-7 均成功，>=8 为错误）
 #
 # 只同步运行时真正需要的产物。$source 是 cargo 的 target/release 目录，
-# 里面同时住着交付物（k-coder.exe + skills/ tools/）和编译中间件；
+# 里面同时住着交付物（KCode.exe + skills/ tools/）和编译中间件；
 # 不加排除时 deps/ 与 build/ 会被整目录镜像过去，安装目录会从 ~90 MB 涨到 3 GB+。
 $excludeDirs = @("deps", "build", "incremental", ".fingerprint", "examples")
-$excludeFiles = @("k_coder.pdb", "k-coder.pdb", "k-coder.d", "KCode.pdb", "KCode.d")
+$excludeFiles = @("k_coder.pdb", "k-coder.pdb", "k-coder.d", "kcode.pdb", "kcode.d", "KCode.pdb", "KCode.d")
 
 # /MIR 不会删除目标目录里被 /XD 排除掉的旧内容，历史遗留的中间件需要先手工清掉
 foreach ($name in $excludeDirs) {
@@ -89,12 +89,17 @@ if ($LASTEXITCODE -ge 8) {
 
 Write-Host "部署完成: $source -> $Dest" -ForegroundColor Green
 
-# 4. 重新打开 k-coder（除非指定 NoRestart）
+# 4. 重新打开 KCode（除非指定 NoRestart）
+# 二进制名由 Tauri mainBinaryName 固定为 KCode.exe；旧版本 k-coder.exe 作为回退
 $exe = Join-Path $Dest "KCode.exe"
+if (-not (Test-Path -LiteralPath $exe)) {
+    $legacyExe = Join-Path $Dest "k-coder.exe"
+    if (Test-Path -LiteralPath $legacyExe) { $exe = $legacyExe }
+}
 if (-not $NoRestart) {
     if (Test-Path $exe) {
         Start-Process -FilePath $exe
-        Write-Host "已重新启动 k-coder" -ForegroundColor Green
+        Write-Host "已重新启动 KCode" -ForegroundColor Green
     } else {
         Write-Host "未找到 $exe，跳过重启" -ForegroundColor Yellow
     }

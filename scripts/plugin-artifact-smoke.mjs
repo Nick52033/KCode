@@ -23,7 +23,7 @@ const deck = Presentation.create({ slideSize: { width: 1280, height: 720 } });
 const slide = deck.slides.add();
 slide.background.fill = '#FFFFFF';
 const title = slide.shapes.add({ geometry: 'rect', position: { left: 60, top: 60, width: 1120, height: 120 } });
-title.text = 'k-Coder artifact runtime';
+title.text = 'KCode artifact runtime';
 title.text.fontSize = 40;
 const pptx = await PresentationFile.exportPptx(deck);
 await pptx.save(`${output}/validated-presentation.pptx`);

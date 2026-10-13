@@ -1,4 +1,4 @@
-// Isolated pnpm tauri dev: com.kcoder.validation.userinputwait, Vite 1496 / CDP 9436.
+// Isolated pnpm tauri dev: com.kcode.validation.userinputwait, Vite 1496 / CDP 9436.
 // Uses a local SSE fixture. Rust virtual-time tests cover waits beyond 24 hours;
 // this script verifies real IPC, persisted pending state, reload, answer and stop.
 const { chromium, expect } = require('@playwright/test');

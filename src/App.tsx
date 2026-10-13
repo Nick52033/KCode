@@ -761,7 +761,7 @@ function App() {
   // `knownProjectPaths` 是浏览器本地状态，只服务桌面端自己的分组渲染；项目归属
   // 的服务端事实由 `projects` 表承载，手机端读的就是它。这里必须写服务端，否则
   // 「添加了项目但还没在项目下建会话」的状态在手机端不可见——那正是手机端只显示
-  // k-coder 一个分组的原因。
+  // KCode 一个分组的原因。
   // 失败只记录不抛出：登记失败不该阻断用户已经完成的添加动作，且服务端会留下日志。
   const persistProjectPaths = (paths: string[]) => {
     if (!paths.length) return;

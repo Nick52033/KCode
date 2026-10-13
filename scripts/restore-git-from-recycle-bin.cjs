@@ -1,10 +1,10 @@
-// 从回收站恢复 D:\code\k-coder\.git 下被删除的文件。
+// 从回收站恢复 D:\code\KCode\.git 下被删除的文件。
 // 只做复制，不动回收站内容，保证可重复执行、可回退。
 const fs = require("fs");
 const path = require("path");
 
 const BIN = "D:/$RECYCLE.BIN/S-1-5-21-1724528068-1882292782-1657361363-401312";
-const PREFIX = "D:\\code\\k-coder\\.git\\";
+const PREFIX = "D:\\code\\KCode\\.git\\";
 const SKIP = /\.(lock)$|index\.stash\./i;
 
 function parseInfo(file) {

@@ -488,7 +488,7 @@ async fn handle_initialize(
         "eventProtocolVersion": EVENT_PROTOCOL_VERSION,
         "sessionId": uuid::Uuid::new_v4().to_string(),
         "server": {
-            "name": "k-coder",
+            "name": "KCode",
             "version": env!("CARGO_PKG_VERSION"),
             "fingerprint": ctx
                 .fingerprint
@@ -540,7 +540,7 @@ async fn handle_auth_refresh(
 }
 
 /// 项目清单。手机端据此渲染项目分组，包括**尚无会话**的项目——这正是此前手机端
-/// 只能看到 k-coder 一个分组的原因（归属事实只存在于会话表里）。
+/// 只能看到 KCode 一个分组的原因（归属事实只存在于会话表里）。
 ///
 /// 与 `thread/list` 分开发方法而不是揉进同一个响应：项目的生命周期比会话慢得多，
 /// 手机端只需要在进入列表页时拉一次，之后刷新会话就能保持分组不跳动。
@@ -1080,7 +1080,7 @@ mod tests {
         let error = map_state_error(AppStateError::ThreadWorkspaceMismatch {
             thread_id: "t1".to_string(),
             expected: std::path::PathBuf::from("D:\\code\\other"),
-            actual: std::path::PathBuf::from("D:\\code\\k-coder"),
+            actual: std::path::PathBuf::from("D:\\code\\KCode"),
         });
         assert_eq!(error.kind(), "forbidden");
         assert!(!error.message.contains("D:\\"));

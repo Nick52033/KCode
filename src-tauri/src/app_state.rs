@@ -4003,12 +4003,12 @@ mod tests {
         )
         .unwrap();
         state.prepare_extensions(false).await.unwrap();
-        std::fs::create_dir_all(workspace.path().join(".k-coder")).unwrap();
-        std::fs::write(workspace.path().join(".k-coder/extensions.json"), "{broken").unwrap();
+        std::fs::create_dir_all(workspace.path().join(".kcode")).unwrap();
+        std::fs::write(workspace.path().join(".kcode/extensions.json"), "{broken").unwrap();
         assert!(state.prepare_extensions(false).await.is_err());
         assert!(state.prepare_extensions(false).await.is_err());
         std::fs::write(
-            workspace.path().join(".k-coder/extensions.json"),
+            workspace.path().join(".kcode/extensions.json"),
             r#"{"mcpServers":[],"hooks":[]}"#,
         )
         .unwrap();
@@ -4019,7 +4019,7 @@ mod tests {
     async fn plugin_lifecycle_rebuilds_the_registry_and_prepare_failures_drop_stale_tools() {
         let data = tempfile::tempdir().unwrap();
         let workspace = tempfile::tempdir().unwrap();
-        let plugin = workspace.path().join(".k-coder/plugins/review-package");
+        let plugin = workspace.path().join(".kcode/plugins/review-package");
         std::fs::create_dir_all(plugin.join(".codex-plugin")).unwrap();
         std::fs::write(
             plugin.join(".codex-plugin/plugin.json"),
@@ -4133,7 +4133,7 @@ mod tests {
     async fn plugin_overview_keeps_discovered_rows_when_other_extension_config_is_invalid() {
         let data = tempfile::tempdir().unwrap();
         let workspace = tempfile::tempdir().unwrap();
-        let plugin = workspace.path().join(".k-coder/plugins/review-package");
+        let plugin = workspace.path().join(".kcode/plugins/review-package");
         std::fs::create_dir_all(plugin.join(".codex-plugin")).unwrap();
         std::fs::write(
             plugin.join(".codex-plugin/plugin.json"),

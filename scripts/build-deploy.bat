@@ -6,7 +6,7 @@ pushd "%~dp0.." || exit /b 1
 call pnpm tauri build --no-bundle
 if errorlevel 1 (
     echo.
-    echo k-Coder build failed. Deployment was skipped.
+    echo KCode build failed. Deployment was skipped.
     popd
     exit /b 1
 )

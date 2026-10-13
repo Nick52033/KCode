@@ -11,16 +11,16 @@ use std::pin::Pin;
 use std::sync::{Arc, RwLock};
 
 use futures_util::{SinkExt, StreamExt};
-use k_coder_lib::agent::RunTurnRequest;
-use k_coder_lib::app_state::AppState;
-use k_coder_lib::mobile::auth::{DeviceRegistry, PairingStore, TokenStore};
-use k_coder_lib::mobile::capability::CapabilityPolicy;
-use k_coder_lib::mobile::events::EventHub;
-use k_coder_lib::mobile::host::GatewayHost;
-use k_coder_lib::mobile::protocol::{MOBILE_PROTOCOL_VERSION, MobileError};
-use k_coder_lib::mobile::rpc::{GatewayContext, IdempotencyCache, PendingRequestIndex};
-use k_coder_lib::mobile::server::{self, ServerBind, ServerHandle};
-use k_coder_lib::protocol::{ImageAttachment, TurnHandle};
+use kcode_lib::agent::RunTurnRequest;
+use kcode_lib::app_state::AppState;
+use kcode_lib::mobile::auth::{DeviceRegistry, PairingStore, TokenStore};
+use kcode_lib::mobile::capability::CapabilityPolicy;
+use kcode_lib::mobile::events::EventHub;
+use kcode_lib::mobile::host::GatewayHost;
+use kcode_lib::mobile::protocol::{MOBILE_PROTOCOL_VERSION, MobileError};
+use kcode_lib::mobile::rpc::{GatewayContext, IdempotencyCache, PendingRequestIndex};
+use kcode_lib::mobile::server::{self, ServerBind, ServerHandle};
+use kcode_lib::protocol::{ImageAttachment, TurnHandle};
 use serde_json::{Value, json};
 use tempfile::TempDir;
 use tokio::net::TcpStream;
@@ -168,7 +168,7 @@ async fn authenticate(client: &mut Client, device_id: &str, device_secret: &str)
         "initialize",
         json!({
             "protocolVersion": MOBILE_PROTOCOL_VERSION,
-            "client": { "name": "k-coder-mobile", "version": "0.1" },
+            "client": { "name": "KCode-mobile", "version": "0.1" },
             "deviceId": device_id,
             "deviceSecret": device_secret,
         }),
@@ -683,7 +683,7 @@ async fn project_list_is_gated_and_fails_closed() {
     harness
         .context
         .policy
-        .set_granted([k_coder_lib::mobile::MobileCapability::Approval]);
+        .set_granted([kcode_lib::mobile::MobileCapability::Approval]);
     let denied = call(&mut client, 2, "project/list", json!({})).await;
     assert_eq!(
         error_kind(&denied),
@@ -702,7 +702,7 @@ async fn project_list_is_gated_and_fails_closed() {
     harness
         .context
         .policy
-        .set_granted([k_coder_lib::mobile::MobileCapability::Chat]);
+        .set_granted([kcode_lib::mobile::MobileCapability::Chat]);
     // 桩宿主没有 AppState：方法与 `thread/list` 走同一条结构化内部错误路径。
     let response = call(&mut client, 3, "project/list", json!({})).await;
     assert_eq!(error_kind(&response), "internal_error");
@@ -716,13 +716,12 @@ async fn events_are_not_delivered_without_a_subscription() {
     let mut client = harness.connect().await;
     authenticate(&mut client, &device_id, &device_secret).await;
 
-    let event = k_coder_lib::protocol::AgentEventEnvelope::new(
-        k_coder_lib::protocol::AgentEvent::TextDelta {
+    let event =
+        kcode_lib::protocol::AgentEventEnvelope::new(kcode_lib::protocol::AgentEvent::TextDelta {
             thread_id: "thread-1".to_string(),
             turn_id: "turn-1".to_string(),
             item_id: "item-1".to_string(),
             delta: "hello".to_string(),
-        },
-    );
+        });
     assert_eq!(harness.context.hub.publish(&event), 0);
 }

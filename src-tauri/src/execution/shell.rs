@@ -8,59 +8,59 @@ const POWERSHELL_UTF8_OUTPUT_PREFIX: &str =
     "try { [Console]::OutputEncoding=[System.Text.Encoding]::UTF8 } catch {}\n";
 #[cfg(windows)]
 const WINDOWS_POWERSHELL_EXIT_SUFFIX: &str = r#"
-$__kCoderCommandSucceeded = $?
-if ($__kCoderCommandSucceeded) { exit 0 }
+$__KCodeCommandSucceeded = $?
+if ($__KCodeCommandSucceeded) { exit 0 }
 if ($LASTEXITCODE -eq 0 -and $null -ne $LASTEXITCODE -and $Error.Count -gt 0) {
-    $__kCoderLastStatement = $null
-    foreach ($__kCoderStatement in $MyInvocation.MyCommand.ScriptBlock.Ast.EndBlock.Statements) {
-        if ($__kCoderStatement.Extent.EndOffset -le __KCODER_COMMAND_END__) {
-            $__kCoderLastStatement = $__kCoderStatement
+    $__KCodeLastStatement = $null
+    foreach ($__KCodeStatement in $MyInvocation.MyCommand.ScriptBlock.Ast.EndBlock.Statements) {
+        if ($__KCodeStatement.Extent.EndOffset -le __KCODE_COMMAND_END__) {
+            $__KCodeLastStatement = $__KCodeStatement
         }
     }
-    if ($__kCoderLastStatement -is [System.Management.Automation.Language.PipelineAst] -and
-        $__kCoderLastStatement.PipelineElements.Count -eq 2) {
-        $__kCoderNative = $__kCoderLastStatement.PipelineElements[0]
-        $__kCoderSelect = $__kCoderLastStatement.PipelineElements[1]
-        $__kCoderSafe = $__kCoderNative -is [System.Management.Automation.Language.CommandAst] -and
-            $__kCoderSelect -is [System.Management.Automation.Language.CommandAst] -and
-            $__kCoderSelect.GetCommandName() -in @('Select-Object', 'select') -and
-            $__kCoderSelect.Redirections.Count -eq 0 -and
-            $__kCoderSelect.CommandElements.Count -eq 3
-        if ($__kCoderSafe) {
-            $__kCoderParameter = $__kCoderSelect.CommandElements[1]
-            $__kCoderCount = $__kCoderSelect.CommandElements[2]
-            $__kCoderSafe = $__kCoderParameter -is [System.Management.Automation.Language.CommandParameterAst] -and
-                $__kCoderParameter.ParameterName -in @('First', 'Last') -and
-                $null -eq $__kCoderParameter.Argument -and
-                $__kCoderCount -is [System.Management.Automation.Language.ConstantExpressionAst] -and
-                $__kCoderCount.Value -is [int] -and $__kCoderCount.Value -gt 0 -and
-                $__kCoderNative.Redirections.Count -eq 1
-            foreach ($__kCoderElement in $__kCoderNative.CommandElements) {
-                if ($__kCoderElement -isnot [System.Management.Automation.Language.StringConstantExpressionAst] -and
-                    $__kCoderElement -isnot [System.Management.Automation.Language.ConstantExpressionAst]) {
-                    $__kCoderSafe = $false
+    if ($__KCodeLastStatement -is [System.Management.Automation.Language.PipelineAst] -and
+        $__KCodeLastStatement.PipelineElements.Count -eq 2) {
+        $__KCodeNative = $__KCodeLastStatement.PipelineElements[0]
+        $__KCodeSelect = $__KCodeLastStatement.PipelineElements[1]
+        $__KCodeSafe = $__KCodeNative -is [System.Management.Automation.Language.CommandAst] -and
+            $__KCodeSelect -is [System.Management.Automation.Language.CommandAst] -and
+            $__KCodeSelect.GetCommandName() -in @('Select-Object', 'select') -and
+            $__KCodeSelect.Redirections.Count -eq 0 -and
+            $__KCodeSelect.CommandElements.Count -eq 3
+        if ($__KCodeSafe) {
+            $__KCodeParameter = $__KCodeSelect.CommandElements[1]
+            $__KCodeCount = $__KCodeSelect.CommandElements[2]
+            $__KCodeSafe = $__KCodeParameter -is [System.Management.Automation.Language.CommandParameterAst] -and
+                $__KCodeParameter.ParameterName -in @('First', 'Last') -and
+                $null -eq $__KCodeParameter.Argument -and
+                $__KCodeCount -is [System.Management.Automation.Language.ConstantExpressionAst] -and
+                $__KCodeCount.Value -is [int] -and $__KCodeCount.Value -gt 0 -and
+                $__KCodeNative.Redirections.Count -eq 1
+            foreach ($__KCodeElement in $__KCodeNative.CommandElements) {
+                if ($__KCodeElement -isnot [System.Management.Automation.Language.StringConstantExpressionAst] -and
+                    $__KCodeElement -isnot [System.Management.Automation.Language.ConstantExpressionAst]) {
+                    $__KCodeSafe = $false
                 }
             }
         }
-        if ($__kCoderSafe) {
-            $__kCoderMerge = $__kCoderNative.Redirections[0]
-            $__kCoderResolvedSelect = $ExecutionContext.InvokeCommand.GetCommand(
-                $__kCoderSelect.GetCommandName(), [System.Management.Automation.CommandTypes]::All)
-            if ($__kCoderResolvedSelect -is [System.Management.Automation.AliasInfo]) {
-                $__kCoderResolvedSelect = $__kCoderResolvedSelect.ResolvedCommand
+        if ($__KCodeSafe) {
+            $__KCodeMerge = $__KCodeNative.Redirections[0]
+            $__KCodeResolvedSelect = $ExecutionContext.InvokeCommand.GetCommand(
+                $__KCodeSelect.GetCommandName(), [System.Management.Automation.CommandTypes]::All)
+            if ($__KCodeResolvedSelect -is [System.Management.Automation.AliasInfo]) {
+                $__KCodeResolvedSelect = $__KCodeResolvedSelect.ResolvedCommand
             }
-            $__kCoderSafe = $__kCoderMerge -is [System.Management.Automation.Language.MergingRedirectionAst] -and
-                $__kCoderMerge.FromStream -eq 2 -and $__kCoderMerge.ToStream -eq 1 -and
-                $__kCoderResolvedSelect.ImplementingType -eq [Microsoft.PowerShell.Commands.SelectObjectCommand]
-            foreach ($__kCoderError in $Error) {
-                if ($__kCoderError.FullyQualifiedErrorId -notin @('NativeCommandError', 'NativeCommandErrorMessage') -or
-                    $__kCoderError.InvocationInfo.MyCommand.CommandType -ne 'Application' -or
-                    $__kCoderError.InvocationInfo.ScriptLineNumber -ne $__kCoderNative.Extent.StartLineNumber -or
-                    $__kCoderError.InvocationInfo.OffsetInLine -ne $__kCoderNative.Extent.StartColumnNumber) {
-                    $__kCoderSafe = $false
+            $__KCodeSafe = $__KCodeMerge -is [System.Management.Automation.Language.MergingRedirectionAst] -and
+                $__KCodeMerge.FromStream -eq 2 -and $__KCodeMerge.ToStream -eq 1 -and
+                $__KCodeResolvedSelect.ImplementingType -eq [Microsoft.PowerShell.Commands.SelectObjectCommand]
+            foreach ($__KCodeError in $Error) {
+                if ($__KCodeError.FullyQualifiedErrorId -notin @('NativeCommandError', 'NativeCommandErrorMessage') -or
+                    $__KCodeError.InvocationInfo.MyCommand.CommandType -ne 'Application' -or
+                    $__KCodeError.InvocationInfo.ScriptLineNumber -ne $__KCodeNative.Extent.StartLineNumber -or
+                    $__KCodeError.InvocationInfo.OffsetInLine -ne $__KCodeNative.Extent.StartColumnNumber) {
+                    $__KCodeSafe = $false
                 }
             }
-            if ($__kCoderSafe) { exit 0 }
+            if ($__KCodeSafe) { exit 0 }
         }
     }
 }
@@ -166,7 +166,7 @@ impl DetectedShell {
             let command_end = script.encode_utf16().count();
             script.push_str(
                 &WINDOWS_POWERSHELL_EXIT_SUFFIX
-                    .replace("__KCODER_COMMAND_END__", &command_end.to_string()),
+                    .replace("__KCODE_COMMAND_END__", &command_end.to_string()),
             );
         }
         script

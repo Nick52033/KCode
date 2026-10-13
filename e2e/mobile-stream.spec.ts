@@ -119,7 +119,7 @@ class FakeGateway {
 async function openChat(page: Page, gateway: FakeGateway): Promise<void> {
   await page.addInitScript(
     (credentials) => {
-      localStorage.setItem("k-coder-mobile-credentials", JSON.stringify(credentials));
+      localStorage.setItem("KCode-mobile-credentials", JSON.stringify(credentials));
     },
     CREDENTIALS,
   );

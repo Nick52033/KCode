@@ -10,6 +10,8 @@ mod rate_limit;
 mod responses;
 mod sse;
 
+pub(crate) const STEP_CHAT_COMPLETIONS_REPLAY_PROVIDER: &str = "step_chat_completions";
+
 // 刻意**不加** `#[cfg(test)]`：`tests/*.rs` 下的集成测试是独立 crate，看不到本 crate
 // 的 `cfg(test)` 构建，而「用确定性的进程内 fake 驱动真实 AgentRuntime」这条验证路线
 // （见 `tests/mobile_turn_lifecycle.rs`）必须复用它。模块内不含任何网络访问，也不读取

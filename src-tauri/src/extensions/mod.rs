@@ -1138,8 +1138,8 @@ impl ExtensionService {
             resolve_scoped_config_path(&self.data_root, Path::new("extensions.json"), false)?;
         let global_mcp =
             resolve_scoped_config_path(&self.data_root, Path::new(MCP_CONFIG_FILE_NAME), false)?;
-        let project_extensions_relative = Path::new(".k-coder").join("extensions.json");
-        let project_mcp_relative = Path::new(".k-coder").join(MCP_CONFIG_FILE_NAME);
+        let project_extensions_relative = Path::new(".kcode").join("extensions.json");
+        let project_mcp_relative = Path::new(".kcode").join(MCP_CONFIG_FILE_NAME);
         let project_extensions =
             resolve_scoped_config_path(workspace, &project_extensions_relative, false)?;
         let project_mcp = resolve_scoped_config_path(workspace, &project_mcp_relative, false)?;
@@ -1353,8 +1353,8 @@ impl ExtensionService {
             collect_extension_files(root, &mut paths)?;
         }
         collect_extension_files(&self.data_root.join("skills"), &mut paths)?;
-        collect_extension_files(&workspace.join(".k-coder").join("skills"), &mut paths)?;
-        collect_extension_files(&workspace.join(".k-coder").join("rules"), &mut paths)?;
+        collect_extension_files(&workspace.join(".kcode").join("skills"), &mut paths)?;
+        collect_extension_files(&workspace.join(".kcode").join("rules"), &mut paths)?;
         paths.sort();
         let mut hasher = std::collections::hash_map::DefaultHasher::new();
         for path in paths {
@@ -1937,7 +1937,7 @@ impl ExtensionService {
     ) -> Result<(), ExtensionError> {
         let relative = match scope {
             "global" => PathBuf::from(MCP_CONFIG_FILE_NAME),
-            "project" => Path::new(".k-coder").join(MCP_CONFIG_FILE_NAME),
+            "project" => Path::new(".kcode").join(MCP_CONFIG_FILE_NAME),
             _ => {
                 return Err(ExtensionError::Config(
                     "MCP configuration scope must be global or project".into(),
@@ -2697,7 +2697,7 @@ fn discover_instructions(
         });
     }
     paths.push((workspace.join("AGENTS.md"), "project".to_string(), 200));
-    let rules = workspace.join(".k-coder").join("rules");
+    let rules = workspace.join(".kcode").join("rules");
     if rules.exists() {
         let canonical_rules = rules
             .canonicalize()
@@ -2764,7 +2764,7 @@ fn discover_skills(
     }
     roots.extend([
         (data_root.join("skills"), "global"),
-        (workspace.join(".k-coder").join("skills"), "project"),
+        (workspace.join(".kcode").join("skills"), "project"),
     ]);
     let mut selected = HashMap::<String, LoadedSkill>::new();
     for (root, scope) in roots {
@@ -3359,8 +3359,8 @@ mod tests {
         let workspace = tempfile::tempdir().unwrap();
         fs::write(data.path().join("AGENTS.md"), "global").unwrap();
         fs::write(workspace.path().join("AGENTS.md"), "project").unwrap();
-        fs::create_dir_all(workspace.path().join(".k-coder/rules")).unwrap();
-        fs::write(workspace.path().join(".k-coder/rules/10-final.md"), "rule").unwrap();
+        fs::create_dir_all(workspace.path().join(".kcode/rules")).unwrap();
+        fs::write(workspace.path().join(".kcode/rules/10-final.md"), "rule").unwrap();
         let values = discover_instructions(data.path(), workspace.path()).unwrap();
         assert_eq!(
             values
@@ -3398,9 +3398,9 @@ mod tests {
             .unwrap();
         fs::write(data.path().join("AGENTS.md"), "global").unwrap();
         fs::write(workspace.path().join("AGENTS.md"), "project").unwrap();
-        fs::create_dir_all(workspace.path().join(".k-coder/rules")).unwrap();
+        fs::create_dir_all(workspace.path().join(".kcode/rules")).unwrap();
         fs::write(
-            workspace.path().join(".k-coder/rules/10-final.md"),
+            workspace.path().join(".kcode/rules/10-final.md"),
             "project rule",
         )
         .unwrap();
@@ -3518,7 +3518,7 @@ mod tests {
         let data = tempfile::tempdir().unwrap();
         let workspace = tempfile::tempdir().unwrap();
         let global_root = data.path().join("skills");
-        let project_root = workspace.path().join(".k-coder/skills");
+        let project_root = workspace.path().join(".kcode/skills");
         write_test_skill(builtin.path(), "review", "BUILTIN-INSTRUCTIONS");
         write_test_skill(&global_root, "review", "GLOBAL-INSTRUCTIONS");
         write_test_skill(&project_root, "review", "PROJECT-INSTRUCTIONS");
@@ -3566,7 +3566,7 @@ mod tests {
         write_test_skill(builtin.path(), "review", "BUILTIN-INSTRUCTIONS");
         write_test_skill(&data.path().join("skills"), "review", "GLOBAL-INSTRUCTIONS");
         write_test_skill(
-            &workspace.path().join(".k-coder/skills"),
+            &workspace.path().join(".kcode/skills"),
             "review",
             "PROJECT-INSTRUCTIONS",
         );
@@ -3609,7 +3609,7 @@ mod tests {
         );
         write_test_skill(&data.path().join("skills"), "review", "GLOBAL-OVERRIDE");
         write_test_skill(
-            &workspace.path().join(".k-coder/skills"),
+            &workspace.path().join(".kcode/skills"),
             "review",
             "PROJECT-OVERRIDE",
         );
@@ -4530,8 +4530,8 @@ mod tests {
     #[test]
     fn hides_windows_verbatim_prefix_in_user_facing_paths() {
         assert_eq!(
-            user_facing_path(Path::new(r"\\?\D:\code\k-coder\SKILL.md")),
-            r"D:\code\k-coder\SKILL.md"
+            user_facing_path(Path::new(r"\\?\D:\code\KCode\SKILL.md")),
+            r"D:\code\KCode\SKILL.md"
         );
         assert_eq!(
             user_facing_path(Path::new(r"\\?\UNC\server\share\SKILL.md")),
@@ -4644,7 +4644,7 @@ mod tests {
             .unwrap_err();
 
         assert!(error.to_string().contains("duplicate MCP server local"));
-        assert!(!workspace.path().join(".k-coder/mcp.json").exists());
+        assert!(!workspace.path().join(".kcode/mcp.json").exists());
     }
 
     #[test]
@@ -4719,7 +4719,7 @@ mod tests {
                 )
                 .is_err()
         );
-        assert!(!workspace.path().join(".k-coder/mcp.json").exists());
+        assert!(!workspace.path().join(".kcode/mcp.json").exists());
     }
 
     #[test]
@@ -4754,7 +4754,7 @@ mod tests {
         assert_eq!(local["command"], "node");
         assert_eq!(local["args"], serde_json::json!(["server.mjs"]));
         assert!(local.get("id").is_none());
-        assert!(workspace.path().join(".k-coder/mcp.json").is_file());
+        assert!(workspace.path().join(".kcode/mcp.json").is_file());
         assert_eq!(
             projection
                 .setting("extension/mcp/local")
@@ -4773,9 +4773,9 @@ mod tests {
         let workspace = tempfile::tempdir().unwrap();
         let outside = tempfile::tempdir().unwrap();
         #[cfg(unix)]
-        std::os::unix::fs::symlink(outside.path(), workspace.path().join(".k-coder")).unwrap();
+        std::os::unix::fs::symlink(outside.path(), workspace.path().join(".kcode")).unwrap();
         #[cfg(windows)]
-        if std::os::windows::fs::symlink_dir(outside.path(), workspace.path().join(".k-coder"))
+        if std::os::windows::fs::symlink_dir(outside.path(), workspace.path().join(".kcode"))
             .is_err()
         {
             return;
@@ -4802,8 +4802,8 @@ mod tests {
     async fn selected_skills_are_read_before_runtime_and_high_risk_requires_explicit_enable() {
         let data = tempfile::tempdir().unwrap();
         let workspace = tempfile::tempdir().unwrap();
-        let read = workspace.path().join(".k-coder/skills/review");
-        let write = workspace.path().join(".k-coder/skills/deploy");
+        let read = workspace.path().join(".kcode/skills/review");
+        let write = workspace.path().join(".kcode/skills/deploy");
         fs::create_dir_all(&read).unwrap();
         fs::create_dir_all(&write).unwrap();
         fs::write(read.join("SKILL.md"), "---\nname: review\ndescription: Review code\ntriggers: [review]\nrisk: read\nenabled: true\n---\nREVIEW-INSTRUCTIONS").unwrap();

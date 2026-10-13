@@ -1,6 +1,6 @@
 import { defineConfig } from "@playwright/test";
 
-const port = process.env.KCODER_E2E_PORT ?? "1420";
+const port = process.env.KCODE_E2E_PORT ?? "1420";
 
 export default defineConfig({
   testDir: "./e2e",

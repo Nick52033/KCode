@@ -1,4 +1,4 @@
-// Isolated Tauri host: com.kcoder.validation.turnflow, Vite 1492, CDP 9432.
+// Isolated Tauri host: com.kcode.validation.turnflow, Vite 1492, CDP 9432.
 // A real 605-second local command crosses the former 600-second pause boundary.
 // No external model, git commit or git push is used.
 const { chromium, expect } = require('@playwright/test');

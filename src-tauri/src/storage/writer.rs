@@ -116,7 +116,7 @@ impl ThreadWriters {
         let (sender, receiver) = mpsc::sync_channel(WRITER_CHANNEL_CAPACITY);
         let worker_thread_id = thread_id.to_string();
         let join = thread::Builder::new()
-            .name(format!("k-coder-jsonl-{thread_id}"))
+            .name(format!("KCode-jsonl-{thread_id}"))
             .spawn(move || run_writer(worker_thread_id, path, receiver))
             .map_err(|error| StorageError::Io(error.to_string()))?;
         writers.insert(

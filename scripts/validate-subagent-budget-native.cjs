@@ -1,4 +1,4 @@
-// Isolated Tauri host: com.kcoder.validation.subagentbudget, Vite 1488, CDP 9428.
+// Isolated Tauri host: com.kcode.validation.subagentbudget, Vite 1488, CDP 9428.
 // Uses local deterministic Provider responses, never an external model.
 const { chromium, expect } = require('@playwright/test');
 const http = require('node:http');

@@ -1486,15 +1486,15 @@ mod tests {
     fn plugin_overview_uses_the_versioned_public_contract() {
         let overview = PluginOverview {
             schema_version: 1,
-            root_path: r"D:\code\k-coder\.k-coder\plugins".into(),
-            builtin_root_path: r"D:\code\Nick\k-coder\plugins".into(),
+            root_path: r"D:\code\KCode\.kcode\plugins".into(),
+            builtin_root_path: r"D:\code\Nick\KCode\plugins".into(),
             plugins: vec![PluginDiagnostic {
                 id: "review-tools@local".into(),
                 scope: PluginScope::Project,
                 name: "review-tools".into(),
                 version: "1.2.3".into(),
                 description: "Review helpers".into(),
-                path: r"D:\code\k-coder\.k-coder\plugins\review-tools".into(),
+                path: r"D:\code\KCode\.kcode\plugins\review-tools".into(),
                 enabled: true,
                 state: PluginState::Degraded,
                 deletable: true,
@@ -1508,14 +1508,14 @@ mod tests {
                 error: None,
             }],
             local_root_path: String::new(),
-            project_root_path: r"D:\code\k-coder\.k-coder\plugins".into(),
+            project_root_path: r"D:\code\KCode\.kcode\plugins".into(),
             error: None,
         };
 
         let value = serde_json::to_value(overview).expect("plugin overview should serialize");
 
         assert_eq!(value["schemaVersion"], 1);
-        assert_eq!(value["builtinRootPath"], r"D:\code\Nick\k-coder\plugins");
+        assert_eq!(value["builtinRootPath"], r"D:\code\Nick\KCode\plugins");
         assert_eq!(value["plugins"][0]["state"], "degraded");
         assert_eq!(value["plugins"][0]["components"]["skillCount"], 1);
         assert_eq!(value["plugins"][0]["components"]["mcpToolCount"], 2);

@@ -5203,7 +5203,7 @@ mod tests {
             .map(|definition| definition.name)
             .collect::<Vec<_>>();
         let prompt = build_system_prompt(
-            Some(Path::new(r"D:\code\k-coder")),
+            Some(Path::new(r"D:\code\KCode")),
             "",
             "",
             "",
@@ -5768,7 +5768,7 @@ mod tests {
 
     #[test]
     fn workspace_prompt_requires_workspace_relative_tool_paths() {
-        let prompt = build_system_prompt(Some(Path::new(r"D:\code\k-coder")), "", "", "", "", &[]);
+        let prompt = build_system_prompt(Some(Path::new(r"D:\code\KCode")), "", "", "", "", &[]);
 
         assert!(prompt.contains("仅用于识别，不是工具参数"));
         assert!(prompt.contains("必须是相对工作区根目录的路径"));
@@ -5800,7 +5800,7 @@ mod tests {
 
         assert!(prompt.contains("当前会话不在任何项目中"));
         assert!(prompt.contains("不得读取、修改、搜索或执行任何本地项目内容"));
-        assert!(!prompt.contains(r"D:\code\k-coder"));
+        assert!(!prompt.contains(r"D:\code\KCode"));
     }
 
     #[test]
@@ -5874,7 +5874,7 @@ mod tests {
 
     #[test]
     fn system_prompt_requires_interleaved_progress_without_private_reasoning() {
-        let prompt = build_system_prompt(Some(Path::new(r"D:\code\k-coder")), "", "", "", "", &[]);
+        let prompt = build_system_prompt(Some(Path::new(r"D:\code\KCode")), "", "", "", "", &[]);
 
         assert!(prompt.contains("自然穿插在工具调用之间"));
         assert!(prompt.contains("刚确认的事实和下一步"));
@@ -5883,7 +5883,7 @@ mod tests {
 
     #[test]
     fn system_prompt_requires_chinese_reasoning_summaries() {
-        let prompt = build_system_prompt(Some(Path::new(r"D:\code\k-coder")), "", "", "", "", &[]);
+        let prompt = build_system_prompt(Some(Path::new(r"D:\code\KCode")), "", "", "", "", &[]);
 
         assert!(prompt.contains("思考摘要语言"));
         assert!(prompt.contains("推理摘要（reasoning summary）"));
@@ -5895,7 +5895,7 @@ mod tests {
 
     #[test]
     fn system_prompt_forbids_boilerplate_closing_after_capability_answers() {
-        let prompt = build_system_prompt(Some(Path::new(r"D:\code\k-coder")), "", "", "", "", &[]);
+        let prompt = build_system_prompt(Some(Path::new(r"D:\code\KCode")), "", "", "", "", &[]);
 
         assert!(prompt.contains("回答能力类问题"));
         assert!(prompt.contains("只依据 `<available_tools>` 和当前工具列表给出事实性回答"));

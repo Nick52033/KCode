@@ -10,7 +10,7 @@ test("scheduled task page supports the main interaction path", async ({ page }) 
     prompt: "Review the workspace and summarize outstanding work.",
     mode: "background",
     threadId: null,
-    workspacePath: "D:\\code\\k-coder",
+    workspacePath: "D:\\code\\KCode",
     enabled: true,
     nextRunAtMs: Date.now() + 3_600_000,
     lastRunAtMs: null,
@@ -34,7 +34,7 @@ test("scheduled task page supports the main interaction path", async ({ page }) 
       updatedAtMs: 2,
       archived: false,
       inProject: true,
-      workspacePath: "D:\\code\\k-coder",
+      workspacePath: "D:\\code\\KCode",
     };
     const detail = {
       schemaVersion: 1,
@@ -67,7 +67,7 @@ test("scheduled task page supports the main interaction path", async ({ page }) 
       }],
     };
     const workspace = {
-      current: { id: "project-1", name: "k-coder", path: "D:\\code\\k-coder", trusted: true, lastOpenedAtMs: 2 },
+      current: { id: "project-1", name: "KCode", path: "D:\\code\\KCode", trusted: true, lastOpenedAtMs: 2 },
       recent: [],
     };
     (window as unknown as { __TAURI_INTERNALS__: unknown }).__TAURI_INTERNALS__ = {

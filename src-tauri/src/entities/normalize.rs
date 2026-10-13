@@ -168,7 +168,7 @@ mod tests {
     fn normalization_is_deterministic_and_idempotent() {
         for raw in [
             "  MemoryService  ",
-            "k-coder",
+            "KCode",
             "\"知识库\"",
             "`bootstrap.ps1`",
             "多个   空格",
@@ -205,8 +205,8 @@ mod tests {
         assert_ne!(expected, normalize_entity_name("Memory Service"));
         // Distinct things stay distinct: the separator is part of the identity.
         assert_ne!(
-            normalize_entity_name("k-coder"),
-            normalize_entity_name("kcoder")
+            normalize_entity_name("KCode Pro"),
+            normalize_entity_name("KCodePro")
         );
     }
 

@@ -10,12 +10,12 @@
 use std::fs;
 use std::path::PathBuf;
 
-use k_coder_lib::mobile::view::{MobileProject, MobileThreadSummary};
-use k_coder_lib::mobile::{
+use kcode_lib::mobile::view::{MobileProject, MobileThreadSummary};
+use kcode_lib::mobile::{
     MobileCapability, MobileDeviceView, MobilePairingView, MobilePendingPairingView, MobileStatus,
 };
-use k_coder_lib::protocol::PROTOCOL_VERSION;
-use k_coder_lib::storage::ThreadSummary;
+use kcode_lib::protocol::PROTOCOL_VERSION;
+use kcode_lib::storage::ThreadSummary;
 use serde_json::{Value, json};
 
 /// 与前端 Playwright 桩数据共用的唯一数据源。

@@ -248,13 +248,13 @@ mod tests {
         let prompt = ModelQueryRewriter::prompt(
             "检索评分",
             &RewriteHints {
-                project_name: Some("k-coder".to_owned()),
+                project_name: Some("KCode".to_owned()),
                 current_file: Some("src-tauri/src/knowledge.rs".to_owned()),
                 recent_entities: vec!["retrieval".to_owned()],
             },
         );
         assert!(prompt.contains("Original query: 检索评分"));
-        assert!(prompt.contains("Project: k-coder"));
+        assert!(prompt.contains("Project: KCode"));
         assert!(prompt.contains("retrieval"));
         assert!(
             !prompt.contains("scope") && !prompt.contains("endpoint") && !prompt.contains("model"),

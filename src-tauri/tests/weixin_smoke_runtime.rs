@@ -1,16 +1,16 @@
 use std::io::Read;
 use std::sync::{Arc, Mutex};
 
-use k_coder_lib::agent::{AgentRuntime, EventPublisher, RunTurnRequest};
-use k_coder_lib::protocol::{AgentEvent, AgentEventEnvelope, ToolCall, TurnState};
-use k_coder_lib::providers::testing::FakeProvider;
-use k_coder_lib::providers::{ProviderEvent, ProviderMessage};
-use k_coder_lib::storage::JsonlThreadRepository;
-use k_coder_lib::tools::ToolRegistry;
+use kcode_lib::agent::{AgentRuntime, EventPublisher, RunTurnRequest};
+use kcode_lib::protocol::{AgentEvent, AgentEventEnvelope, ToolCall, TurnState};
+use kcode_lib::providers::testing::FakeProvider;
+use kcode_lib::providers::{ProviderEvent, ProviderMessage};
+use kcode_lib::storage::JsonlThreadRepository;
+use kcode_lib::tools::ToolRegistry;
 use serde_json::{Value, json};
 use tokio_util::sync::CancellationToken;
 
-const REPLY: &str = "k-Coder 最小验证通过：真实 AgentRuntime 已读取隔离测试文件并完成回复（本地测试 Provider，未访问项目、未调用外部模型）。";
+const REPLY: &str = "KCode 最小验证通过：真实 AgentRuntime 已读取隔离测试文件并完成回复（本地测试 Provider，未访问项目、未调用外部模型）。";
 
 #[derive(Default)]
 struct RecordingPublisher(Mutex<Vec<AgentEventEnvelope>>);

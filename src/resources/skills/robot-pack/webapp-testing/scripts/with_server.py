@@ -226,7 +226,7 @@ def parse_arguments(argv):
 
 def main(argv):
     args, command, addresses = parse_arguments(argv)
-    log_directory = tempfile.mkdtemp(prefix="kcoder-with-server-")
+    log_directory = tempfile.mkdtemp(prefix="kcode-with-server-")
     servers = []
     exit_code = 0
     try:

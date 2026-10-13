@@ -2,7 +2,7 @@ use crate::context::{self, CompactionSummary, CompactionUserContext};
 use std::collections::HashMap;
 
 use crate::protocol::{MessageRole, TokenUsage, ToolResult, UserInputAction, UserInputRequestKind};
-use crate::providers::ProviderMessage;
+use crate::providers::{ProviderMessage, STEP_CHAT_COMPLETIONS_REPLAY_PROVIDER};
 use crate::storage::{StoredEvent, StoredEventKind};
 
 use super::input::chat_to_provider;
@@ -97,7 +97,10 @@ pub(super) fn provider_history_for_turn(
                     output,
                 })
             }
-            StoredEventKind::ProviderContext { provider, item } if include_provider_context => {
+            StoredEventKind::ProviderContext { provider, item }
+                if include_provider_context
+                    || provider == STEP_CHAT_COMPLETIONS_REPLAY_PROVIDER =>
+            {
                 Some(ProviderMessage::ProviderContext { provider, item })
             }
             StoredEventKind::ProviderContext { .. } => None,
@@ -359,6 +362,44 @@ mod tests {
 
         assert!(legacy_serialized.contains("current-turn-payload"));
         assert!(legacy_serialized.contains("previous-turn-secret-payload"));
+    }
+
+    #[test]
+    fn step_replay_context_can_cross_turns_but_other_provider_context_cannot() {
+        let events = [
+            StoredEvent::new(
+                "thread",
+                Some("previous-turn".into()),
+                StoredEventKind::ProviderContext {
+                    provider: STEP_CHAT_COMPLETIONS_REPLAY_PROVIDER.into(),
+                    item: serde_json::json!({
+                        "type": "step_reasoning_replay",
+                        "version": 1,
+                        "providerId": "step-provider",
+                        "model": "step-5-preview",
+                        "callIds": ["step-call"],
+                        "reasoningContent": "private-step-reasoning"
+                    }),
+                },
+            ),
+            StoredEvent::new(
+                "thread",
+                Some("previous-turn".into()),
+                StoredEventKind::ProviderContext {
+                    provider: "openai_responses".into(),
+                    item: serde_json::json!({
+                        "type": "reasoning",
+                        "encrypted_content": "previous-turn-secret-payload"
+                    }),
+                },
+            ),
+        ];
+
+        let messages = provider_history_for_turn(events.to_vec(), false, Some("current-turn"))
+            .request_messages();
+        let serialized = serde_json::to_string(&messages).unwrap();
+        assert!(serialized.contains("private-step-reasoning"));
+        assert!(!serialized.contains("previous-turn-secret-payload"));
     }
 
     #[test]

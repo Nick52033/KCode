@@ -10,7 +10,7 @@ import QRCode from 'qrcode';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const endpoint = 'https://ilinkai.weixin.qq.com/';
-const baseInfo = { channel_version: '2.4.9', bot_agent: 'k-Coder/0.10.0 (weixin-smoke)' };
+const baseInfo = { channel_version: '2.4.9', bot_agent: 'KCode/0.10.0 (weixin-smoke)' };
 const maxBody = 1024 * 1024;
 const challenge = `kcoder-${crypto.randomBytes(6).toString('hex')}`;
 const pageKey = crypto.randomBytes(24).toString('hex');
@@ -122,7 +122,7 @@ async function runRuntime(input, binary) {
       clearTimeout(timer);
       activeChild = undefined;
       const line = output.split(/\r?\n/).find(item => item.startsWith('KC_WEIXIN_SMOKE_RESULT '));
-      if (code !== 0 || !line || size > maxBody) { reject(new Error('k-Coder 运行时验证失败')); return; }
+      if (code !== 0 || !line || size > maxBody) { reject(new Error('KCode 运行时验证失败')); return; }
       try { resolve(JSON.parse(line.slice('KC_WEIXIN_SMOKE_RESULT '.length))); }
       catch { reject(new Error('验证运行时返回格式错误')); }
     });
@@ -133,7 +133,7 @@ async function runRuntime(input, binary) {
 function page() {
   return `<!doctype html><html lang="zh-CN"><meta charset="utf-8"><title>微信最小验证</title>
 <style>body{font:16px system-ui;margin:24px;background:#f5f6f7;color:#222}main{max-width:620px;margin:auto;background:white;padding:24px;border-radius:16px}img{display:block;width:min(300px,100%);height:auto;margin:20px auto}[hidden]{display:none!important}code{background:#eef5f0;padding:8px;display:inline-block;font-size:20px}button{padding:8px 16px;margin:4px}p{line-height:1.6}small{color:#666}input{padding:8px;font-size:18px}</style>
-<main><h1>微信 → k-Coder 最小验证</h1><p id="phase">${escapeHtml(ui.phase)}</p>
+<main><h1>微信 → KCode 最小验证</h1><p id="phase">${escapeHtml(ui.phase)}</p>
 <img id="qr" alt="微信扫码连接二维码" ${ui.qr ? `src="${escapeHtml(ui.qr)}"` : 'hidden'}>
 <p><small id="status">${escapeHtml(ui.qrStatus)}</small></p>
 <p>先扫码并在手机确认；等页面显示“已连接”后，在 Bot 会话发送：</p>
@@ -299,7 +299,7 @@ async function verifyOnce(binary) {
     for (const message of result.msgs ?? []) {
       const match = messageForChallenge(message, account.owner, challenge, seen);
       if (!match) continue;
-      update('已收到口令，正在运行隔离的 k-Coder 检查');
+      update('已收到口令，正在运行隔离的 KCode 检查');
       const runtime = await runRuntime(match.input, binary);
       assert(runtime.state === 'completed' && runtime.tools === 1 && runtime.providerCalls === 2);
       await request(account.base, 'ilink/bot/sendmessage', { base_info: baseInfo, msg: {
@@ -329,7 +329,7 @@ async function main(binary) {
       if (restartRequested && !stopped) continue;
       update('验证未完成，可以重新生成二维码', {
         qr: '', needCode: false, canRestart: !stopped,
-        result: /^微信接口|^扫码|^等待|^验证码|^此 Bot|^已停止|^二维码|^k-Coder/.test(error.message)
+        result: /^微信接口|^扫码|^等待|^验证码|^此 Bot|^已停止|^二维码|^KCode/.test(error.message)
           ? error.message : '网络、协议或本地运行时校验失败；未输出凭据或接口原文',
       });
       process.exitCode = 1;

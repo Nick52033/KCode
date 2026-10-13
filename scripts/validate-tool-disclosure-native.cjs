@@ -1,4 +1,4 @@
-// Isolated pnpm tauri dev: com.kcoder.validation.disclosure, Vite 1499 / CDP 9499.
+// Isolated pnpm tauri dev: com.kcode.validation.disclosure, Vite 1499 / CDP 9499.
 // A local SSE provider pauses between real file tool batches for UI interaction.
 const { chromium, expect } = require('@playwright/test');
 const assert = require('node:assert/strict');

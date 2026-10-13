@@ -143,7 +143,7 @@ impl ProjectionDb {
         std::fs::create_dir_all(data_root).map_err(|error| {
             ProjectionError::Database(rusqlite::Error::ToSqlConversionFailure(Box::new(error)))
         })?;
-        let connection = Connection::open(data_root.join("k-coder.db"))?;
+        let connection = Connection::open(data_root.join("kcode.db"))?;
         migrate(&connection)?;
         Ok(Self {
             connection: Arc::new(Mutex::new(connection)),

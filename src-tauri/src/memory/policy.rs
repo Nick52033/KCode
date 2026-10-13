@@ -420,7 +420,7 @@ mod tests {
         }
 
         for private in [
-            r"the repository lives at D:\code\k-coder",
+            r"the repository lives at D:\code\KCode",
             "the build runs in /home/ci/workspace",
             "reach me at user@example.com",
             "call 13800138000 before deploying",

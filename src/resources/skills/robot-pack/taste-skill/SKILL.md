@@ -10,4 +10,4 @@ enabled: true
 
 Design for the actual product and repeated user task. Establish clear hierarchy, stable layout, readable density, restrained color, consistent spacing, and predictable interaction. Prefer existing design tokens and familiar icons. Avoid decorative cards, oversized marketing typography, gratuitous gradients, nested panels, and motion that competes with work.
 
-Cover compact and wide viewports, long text, empty and loading states, disabled controls, keyboard focus, and error recovery. Inspect the rendered result rather than judging source code alone. Read references/k-coder-design.md only when a deeper review checklist is needed.
+Cover compact and wide viewports, long text, empty and loading states, disabled controls, keyboard focus, and error recovery. Inspect the rendered result rather than judging source code alone. Read references/kcode-design.md only when a deeper review checklist is needed.

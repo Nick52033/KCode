@@ -310,7 +310,7 @@ mod tests {
         );
         assert!(secret.requires_review(ConflictKind::None, true));
 
-        let private = draft(MemoryOperation::Create, r"repo at D:\code\k-coder", 1.0);
+        let private = draft(MemoryOperation::Create, r"repo at D:\code\KCode", 1.0);
         assert!(private.requires_review(ConflictKind::None, true));
 
         let delete = draft(MemoryOperation::Delete, "prefer pnpm", 1.0);

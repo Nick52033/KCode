@@ -1,6 +1,6 @@
 # AGENTS.md
 
-本说明适用于整个 k-Coder 仓库。
+本说明适用于整个 KCode 仓库。
 
 ## 必读文档
 
@@ -98,7 +98,7 @@ cargo test --manifest-path src-tauri/Cargo.toml
 - 跑不带模块过滤的全量 `cargo test --lib`；
 - 在没有命中「测试触发条件」时跑 `cargo test`；
 - 为了「确保没问题」而反复重跑同一条已经通过的验证命令；
-- 执行 Release 构建或部署（`pnpm tauri build`、`pnpm build:deploy`、`scripts/k-coder-build-deploy.bat`）——需要验证安装端行为时按「本地运行与源码修改约定」单独进行；
+- 执行 Release 构建或部署（`pnpm tauri build`、`pnpm build:deploy`、`scripts/kcode-build-deploy.bat`）——需要验证安装端行为时按「本地运行与源码修改约定」单独进行；
 - 每改一处就验证一轮——一个 Turn 内多次编辑后只在改完时验证一次，不为中间态反复整 crate 重编译；
 - 工作区树编译不过时对他人在途改动做大面积修补——先报告阻塞的具体错误，交由负责该改动的对话收尾。
 
@@ -108,6 +108,6 @@ cargo test --manifest-path src-tauri/Cargo.toml
 
 ## 本地运行与源码修改约定
 
-- 客户端运行/安装目录固定为 D:\apps\k-coder\。
-- 代码、测试和文档修改只在源码仓库（当前工作区根目录 `D:\code\k-coder\`）中进行；不得把源码改动写入安装目录。
+- 客户端运行/安装目录固定为 D:\apps\KCode\。
+- 代码、测试和文档修改只在源码仓库（当前工作区根目录 `D:\code\KCode\`）中进行；不得把源码改动写入安装目录。
 - 需要验证安装端行为时，先构建源码，再明确记录是否部署到安装目录。

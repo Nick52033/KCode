@@ -102,7 +102,7 @@ test("compiles existing browser tools and replays them in system Edge", async ()
         {
           stepId: "type",
           toolName: "browser_type",
-          argsTemplate: { selector: "#query", text: "k-coder" },
+          argsTemplate: { selector: "#query", text: "KCode" },
         },
         {
           stepId: "click",
@@ -147,7 +147,7 @@ test("compiles existing browser tools and replays them in system Edge", async ()
         headless: true,
       });
       assert.equal(report.ok, true);
-      assert.match(report.snapshot, /Submitted: k-coder/);
+      assert.match(report.snapshot, /Submitted: KCode/);
       assert.equal(report.steps.length, 6);
       assert.ok(report.screenshotBytes > 0);
       assert.equal(

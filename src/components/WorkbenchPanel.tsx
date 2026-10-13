@@ -431,12 +431,14 @@ function gitActionSuccessLabel(action: "stage" | "unstage" | "commit" | "pull" |
 }
 
 /**
- * 推送只传输提交，工作区里未暂存的改动不会离开本机。后端在无可推送提交时
- * 会返回一句明确说明，这里优先如实展示它，而不是笼统地报告「推送完成」。
+ * 推送只传输提交，工作区里未暂存的改动不会离开本机；拉取在远端没有新提交时也
+ * 只是原地完成。后端对这两种无功而返的情况都会返回一句明确说明，这里优先如实
+ * 展示它，而不是笼统地报告「推送完成」「拉取完成」。
  */
 function gitActionNotice(action: "stage" | "unstage" | "commit" | "pull" | "push", result: string) {
   const detail = result.trim();
   if (action === "push" && detail.startsWith("没有需要推送的提交")) return detail;
+  if (action === "pull" && detail.startsWith("没有需要拉取的提交")) return detail;
   return gitActionSuccessLabel(action);
 }
 

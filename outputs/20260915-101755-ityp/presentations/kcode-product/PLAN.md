@@ -1,13 +1,13 @@
-# k-Coder 产品介绍 — Deck Plan
+# KCode 产品介绍 — Deck Plan
 
 Profile: product-platform (SaaS / product / platform / security / workflow / ecosystem)
 Audience: 技术决策者、资深工程师、平台负责人
 Occasion: 产品能力介绍（约 8 分钟讲述）
-Deck job: 让受众理解 k-Coder 不是「Shell 加聊天壳」，而是一个具备受控执行、可审计治理和多智能体协作的桌面编程智能体平台。
+Deck job: 让受众理解 KCode 不是「Shell 加聊天壳」，而是一个具备受控执行、可审计治理和多智能体协作的桌面编程智能体平台。
 
 ## Title
 
-k-Coder · 受控的桌面编程智能体平台
+KCode · 受控的桌面编程智能体平台
 Source line: 产品介绍 · 基于仓库路线图与架构文档 · 2026-09
 
 ## Claim spine（每页一个主张，含证据锚点）
@@ -16,7 +16,7 @@ Source line: 产品介绍 · 基于仓库路线图与架构文档 · 2026-09
 |---|---|---|---|
 | 1 | Cover | 标题页 | docs/开发路线图.md 当前位置 |
 | 2 | 问题 | 通用编码助手把执行权交给模型，风险与不可复现同时放大 | docs/架构.md 目标段 |
-| 3 | 定位 | k-Coder 是桌面运行时，不是 Shell 的聊天包装层 | docs/架构.md 首段 |
+| 3 | 定位 | KCode 是桌面运行时，不是 Shell 的聊天包装层 | docs/架构.md 首段 |
 | 4 | 系统 | 四层职责分离：UI / Tauri 边界 / agent 协调 / providers 协议转换 | docs/架构.md 模块边界 + AGENTS.md 架构边界 |
 | 5 | 执行治理 | 每次工具执行都经过策略判定、审批、取消与超时清理 | AGENTS.md 安全约束；Phase 3/4 门槛 |
 | 6 | 安全 | 路径规范化、工作区逃逸拒绝、密钥不落日志 | AGENTS.md 安全约束 |

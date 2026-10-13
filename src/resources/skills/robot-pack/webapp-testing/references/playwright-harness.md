@@ -30,7 +30,7 @@ it; only the policy-checked `run_command` can.
 1. Read it with `skill_resource_read` (`skillId: "webapp-testing"`,
    `path: "scripts/with_server.py"`, raise `limit` until `truncated` is false).
 2. Write the exact text into the workspace with `write_file`, for example
-   `.k-coder/tmp/with_server.py`. Never commit it and never place it inside
+   `.kcode/tmp/with_server.py`. Never commit it and never place it inside
    `src/resources/skills/`.
 3. Delete it when the run ends, together with any check script you created.
 
@@ -40,9 +40,9 @@ change, say so explicitly and show the change.
 ## 3. Harness contract
 
 ```bash
-python .k-coder/tmp/with_server.py \
+python .kcode/tmp/with_server.py \
   --server "npm run dev" --port 5173 \
-  -- python .k-coder/tmp/check.py
+  -- python .kcode/tmp/check.py
 ```
 
 Multiple servers (backend + frontend) repeat `--server` and `--port` in the same
@@ -91,7 +91,7 @@ Write outputs under the workspace, never to container paths such as
 from playwright.sync_api import sync_playwright
 
 BASE = "http://127.0.0.1:5173"
-OUT = ".k-coder/tmp/evidence"
+OUT = ".kcode/tmp/evidence"
 calls = []
 messages = []
 failures = []

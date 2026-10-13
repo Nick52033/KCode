@@ -28,7 +28,7 @@ category: observability
 
 第一次执行时**必须**先用 `request_user_input` 问用户日志位置，不要凭默认路径假设。可问成多选：
 
-- 选项示例：`%APPDATA%\com.kcoder.app\runtime-data\logs\runtime.jsonl`（默认目录）
+- 选项示例：`%APPDATA%\com.kcode.app\runtime-data\logs\runtime.jsonl`（默认目录）
 - 选项示例：自定义目录（用户在设置里改过日志目录）
 - 选项示例：用户会把文件复制到工作区内
 
@@ -39,7 +39,7 @@ category: observability
 
    ```powershell
    New-Item -ItemType Directory -Force .tmp-logs | Out-Null
-   Copy-Item "$env:APPDATA\com.kcoder.app\runtime-data\logs\runtime.jsonl" .tmp-logs\runtime.jsonl
+   Copy-Item "$env:APPDATA\com.kcode.app\runtime-data\logs\runtime.jsonl" .tmp-logs\runtime.jsonl
    ```
 
    复制动作由用户执行或经其确认后执行；不要尝试绕过路径安全检查。

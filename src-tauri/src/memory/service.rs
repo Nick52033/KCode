@@ -1308,7 +1308,7 @@ mod tests {
             .upsert(command(
                 MemoryScope::user(),
                 MemoryType::Fact,
-                r"the repository lives at D:\code\k-coder",
+                r"the repository lives at D:\code\KCode",
             ))
             .unwrap();
         assert_eq!(outcome.memory.sensitivity, "private");

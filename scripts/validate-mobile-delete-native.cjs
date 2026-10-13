@@ -14,7 +14,7 @@
 //   node node_modules/@tauri-apps/cli/tauri.js dev --no-watch --config src-tauri/target/mobile-delete-validation.json
 //   node scripts/validate-mobile-delete-native.cjs
 // 两个坑：`tauri dev` 会被并行工作流的 cargo 挡在
-// `Blocking waiting for file lock on build directory`，要等新的 `k-coder.exe` 出现**且**
+// `Blocking waiting for file lock on build directory`，要等新的 `kcode.exe` 出现**且**
 // 9433 在 LISTENING 之后再跑脚本；上一次运行残留的浏览器进程会在退出前继续占着端口，
 // 所以启动前先等端口空出来，别把「残留进程占着端口」当成「宿主已就绪」。
 //
@@ -26,13 +26,13 @@ const { chromium, expect } = require('@playwright/test');
 const { readFileSync, writeFileSync } = require('node:fs');
 const path = require('node:path');
 
-const CDP_PORT = Number(process.env.KCODER_CDP_PORT ?? 9433);
-const DEV_URL = process.env.KCODER_DEV_URL ?? 'http://127.0.0.1:1481/';
+const CDP_PORT = Number(process.env.KCODE_CDP_PORT ?? 9433);
+const DEV_URL = process.env.KCODE_DEV_URL ?? 'http://127.0.0.1:1481/';
 const GATEWAY_PORT = 18787;
 const RESULT_PATH = path.join('src-tauri', 'target', 'mobile-delete-native-result.json');
 const STATE_PATH = path.join(
   process.env.APPDATA || '',
-  'com.kcoder.validation.mobiledelete',
+  'com.kcode.validation.mobiledelete',
   'runtime-data',
   'mobile',
   'state.json',

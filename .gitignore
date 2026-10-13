@@ -41,4 +41,4 @@ outputs/
 *.tsbuildinfo
 vite.config.js
 vite.config.d.ts
-scripts/k-coder-build-deploy.bat
+scripts/kcode-build-deploy.bat

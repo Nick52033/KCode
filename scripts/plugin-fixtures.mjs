@@ -1,8 +1,8 @@
 // Test-only resolver for plugin fixtures.
 //
-// k-Coder plugins live in two scopes: the machine-wide local plugin root under the
+// KCode plugins live in two scopes: the machine-wide local plugin root under the
 // application data directory (shared by every project) and the per-project root at
-// `<workspace>/.k-coder/plugins`. The repository deliberately ships no plugin content,
+// `<workspace>/.kcode/plugins`. The repository deliberately ships no plugin content,
 // so a test that needs a plugin fixture resolves it from either root and skips itself
 // with an explicit reason when neither root has that plugin installed.
 import os from "node:os";
@@ -14,11 +14,11 @@ const workspace = path.resolve(import.meta.dirname, "..");
 
 function localPluginRoots() {
   const roots = [];
-  if (process.env.KCODER_DATA_ROOT) {
-    roots.push(path.join(process.env.KCODER_DATA_ROOT, "plugins"));
+  if (process.env.KCODE_DATA_ROOT) {
+    roots.push(path.join(process.env.KCODE_DATA_ROOT, "plugins"));
   }
   if (process.env.APPDATA) {
-    roots.push(path.join(process.env.APPDATA, "com.kcoder.app", "runtime-data", "plugins"));
+    roots.push(path.join(process.env.APPDATA, "com.kcode.app", "runtime-data", "plugins"));
   }
   return roots;
 }
@@ -26,7 +26,7 @@ function localPluginRoots() {
 /** Absolute root of an installed plugin, or `null` when it is not available. */
 export function findPluginRoot(name) {
   const candidates = [
-    path.join(workspace, ".k-coder", "plugins", name),
+    path.join(workspace, ".kcode", "plugins", name),
     ...localPluginRoots().map((root) => path.join(root, name)),
   ];
   return candidates.find((candidate) => fs.existsSync(candidate)) ?? null;
@@ -65,12 +65,12 @@ export async function withArtifactRuntime(callback) {
     "node_modules",
   );
   if (!fs.existsSync(path.join(modules, "@oai", "artifact-tool"))) return false;
-  const previous = process.env.K_CODER_ARTIFACT_NODE_MODULES;
-  process.env.K_CODER_ARTIFACT_NODE_MODULES = modules;
+  const previous = process.env.KCODE_ARTIFACT_NODE_MODULES;
+  process.env.KCODE_ARTIFACT_NODE_MODULES = modules;
   try {
     return await callback();
   } finally {
-    if (previous === undefined) delete process.env.K_CODER_ARTIFACT_NODE_MODULES;
-    else process.env.K_CODER_ARTIFACT_NODE_MODULES = previous;
+    if (previous === undefined) delete process.env.KCODE_ARTIFACT_NODE_MODULES;
+    else process.env.KCODE_ARTIFACT_NODE_MODULES = previous;
   }
 }

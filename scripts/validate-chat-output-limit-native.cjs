@@ -1,4 +1,4 @@
-// Isolated Tauri dev: com.kcoder.validation.outputlimit / Vite 1494 / CDP 9434.
+// Isolated Tauri dev: com.kcode.validation.outputlimit / Vite 1494 / CDP 9434.
 // Only a loopback SSE fixture is used; reported token counts simulate a gateway.
 const { chromium, expect } = require('@playwright/test');
 const assert = require('node:assert/strict');

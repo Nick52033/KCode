@@ -6,7 +6,7 @@ const server = http.createServer(async (request, response) => {
   const message = JSON.parse(Buffer.concat(chunks).toString("utf8"));
   if (
     request.headers.authorization !== "Bearer hidden-value"
-    || request.headers["x-client-name"] !== "k-coder-test"
+    || request.headers["x-client-name"] !== "KCode-test"
   ) {
     response.writeHead(401).end();
     return;

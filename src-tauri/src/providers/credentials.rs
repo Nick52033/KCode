@@ -1,5 +1,5 @@
 #[cfg(not(test))]
-const SERVICE_NAME: &str = "com.kcoder.app";
+const SERVICE_NAME: &str = "com.kcode.app";
 #[cfg(not(test))]
 const LEGACY_API_KEY_ACCOUNT: &str = "default-provider-api-key";
 

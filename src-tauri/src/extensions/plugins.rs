@@ -22,7 +22,7 @@ use crate::tools::{ToolContext, ToolError, ToolHandler};
 
 use super::mcp::{self, McpLaunchOptions, McpSecretStore, McpServerConfig, McpTransportConfig};
 
-const PLUGIN_ROOT_PARENT: &str = ".k-coder";
+const PLUGIN_ROOT_PARENT: &str = ".kcode";
 const PLUGIN_ROOT_DIRECTORY: &str = "plugins";
 const PLUGIN_OVERVIEW_SCHEMA_VERSION: u32 = 1;
 const MAX_PLUGIN_CANDIDATES: usize = 128;
@@ -234,7 +234,7 @@ impl PluginHost {
     }
 
     /// Binds the project plugin root to the active workspace. The root is
-    /// `<workspace>/.k-coder/plugins`; the machine-wide root remains unchanged.
+    /// `<workspace>/.kcode/plugins`; the machine-wide root remains unchanged.
     /// Returns `true` when the bound root changed, which invalidates the cached
     /// overview of the previous project.
     pub fn set_workspace(&self, workspace: &Path) -> bool {
@@ -2805,7 +2805,7 @@ fn plugin_root_present(root: &Path) -> Result<bool, PluginError> {
         .map_err(|error| PluginError::Io(error.to_string()))?;
     if canonical_root.parent() != Some(canonical_parent.as_path()) || !canonical_root.is_dir() {
         return Err(PluginError::Config(
-            "plugin root must be a real direct child of the project .k-coder directory".into(),
+            "plugin root must be a real direct child of the project .kcode directory".into(),
         ));
     }
     Ok(true)
@@ -3041,7 +3041,7 @@ mod tests {
     #[test]
     fn interface_metadata_does_not_degrade_usable_skills_but_apps_still_do() {
         let workspace = tempfile::tempdir().unwrap();
-        let root = workspace.path().join(".k-coder/plugins/display");
+        let root = workspace.path().join(".kcode/plugins/display");
         let manifest = json!({
             "name": "display", "version": "1", "description": "Display metadata",
             "interface": { "displayName": "Display", "brandColor": "#107C41" }
@@ -3073,7 +3073,7 @@ mod tests {
     fn discovers_direct_codex_plugin_as_disabled_with_stable_id() {
         let data = tempfile::tempdir().unwrap();
         write_manifest(
-            &data.path().join(".k-coder/plugins/review-package"),
+            &data.path().join(".kcode/plugins/review-package"),
             json!({
                 "name": "review-tools",
                 "version": "1.2.3",
@@ -3081,7 +3081,7 @@ mod tests {
                 "futureField": { "preserved": true }
             }),
         );
-        fs::create_dir_all(data.path().join(".k-coder/plugins/not-a-plugin")).unwrap();
+        fs::create_dir_all(data.path().join(".kcode/plugins/not-a-plugin")).unwrap();
 
         let host = plugin_host(data.path());
         let overview = host.scan().unwrap();
@@ -3189,11 +3189,11 @@ mod tests {
     #[test]
     fn invalid_manifest_is_isolated_from_valid_plugins() {
         let data = tempfile::tempdir().unwrap();
-        let invalid = data.path().join(".k-coder/plugins/broken");
+        let invalid = data.path().join(".kcode/plugins/broken");
         fs::create_dir_all(invalid.join(".codex-plugin")).unwrap();
         fs::write(invalid.join(".codex-plugin/plugin.json"), b"{").unwrap();
         write_manifest(
-            &data.path().join(".k-coder/plugins/valid"),
+            &data.path().join(".kcode/plugins/valid"),
             json!({
                 "name": "valid-tools",
                 "version": "1.0.0",
@@ -3221,7 +3221,7 @@ mod tests {
         let data = tempfile::tempdir().unwrap();
         for folder in ["first", "second"] {
             write_manifest(
-                &data.path().join(".k-coder/plugins").join(folder),
+                &data.path().join(".kcode/plugins").join(folder),
                 json!({
                     "name": "duplicate",
                     "version": "1.0.0",
@@ -3245,7 +3245,7 @@ mod tests {
         let data = tempfile::tempdir().unwrap();
         fs::create_dir_all(data.path().join("outside")).unwrap();
         write_manifest(
-            &data.path().join(".k-coder/plugins/escaping"),
+            &data.path().join(".kcode/plugins/escaping"),
             json!({
                 "name": "escaping",
                 "version": "1.0.0",
@@ -3270,7 +3270,7 @@ mod tests {
     fn rejects_escaping_paths_in_known_unsupported_components() {
         let data = tempfile::tempdir().unwrap();
         write_manifest(
-            &data.path().join(".k-coder/plugins/escaping-app"),
+            &data.path().join(".kcode/plugins/escaping-app"),
             json!({
                 "name": "escaping-app",
                 "version": "1.0.0",
@@ -3306,7 +3306,7 @@ mod tests {
             write_manifest(
                 &data
                     .path()
-                    .join(format!(".k-coder/plugins/escaping-interface-{index}")),
+                    .join(format!(".kcode/plugins/escaping-interface-{index}")),
                 json!({
                     "name": format!("escaping-interface-{index}"),
                     "version": "1.0.0",
@@ -3328,7 +3328,7 @@ mod tests {
     #[test]
     fn manifest_size_limit_invalidates_only_that_plugin() {
         let data = tempfile::tempdir().unwrap();
-        let root = data.path().join(".k-coder/plugins/oversized/.codex-plugin");
+        let root = data.path().join(".kcode/plugins/oversized/.codex-plugin");
         fs::create_dir_all(&root).unwrap();
         fs::write(root.join("plugin.json"), vec![b' '; 256 * 1024 + 1]).unwrap();
 
@@ -3351,7 +3351,7 @@ mod tests {
             write_manifest(
                 &data
                     .path()
-                    .join(".k-coder/plugins")
+                    .join(".kcode/plugins")
                     .join(format!("plugin-{index}")),
                 json!({
                     "name": format!("plugin-{index}"),
@@ -3371,14 +3371,14 @@ mod tests {
     fn malformed_required_fields_and_non_utf8_manifests_are_isolated() {
         let data = tempfile::tempdir().unwrap();
         write_manifest(
-            &data.path().join(".k-coder/plugins/missing"),
+            &data.path().join(".kcode/plugins/missing"),
             json!({ "name": "missing-version", "description": "Missing" }),
         );
         write_manifest(
-            &data.path().join(".k-coder/plugins/invalid-name"),
+            &data.path().join(".kcode/plugins/invalid-name"),
             json!({ "name": "Invalid Name", "version": "1", "description": "Invalid" }),
         );
-        let binary = data.path().join(".k-coder/plugins/binary/.codex-plugin");
+        let binary = data.path().join(".kcode/plugins/binary/.codex-plugin");
         fs::create_dir_all(&binary).unwrap();
         fs::write(binary.join("plugin.json"), [0xff, 0xfe]).unwrap();
 
@@ -3399,7 +3399,7 @@ mod tests {
         let data = tempfile::tempdir().unwrap();
         let outside = tempfile::tempdir().unwrap();
         write_manifest(
-            &data.path().join(".k-coder/plugins/absolute"),
+            &data.path().join(".kcode/plugins/absolute"),
             json!({
                 "name": "absolute-plugin",
                 "version": "1.0.0",
@@ -3407,7 +3407,7 @@ mod tests {
                 "skills": outside.path().to_string_lossy()
             }),
         );
-        let crowded = data.path().join(".k-coder/plugins/crowded");
+        let crowded = data.path().join(".kcode/plugins/crowded");
         write_manifest(
             &crowded,
             json!({
@@ -3451,7 +3451,7 @@ mod tests {
     fn oversized_manifest_display_fields_are_invalid_and_diagnostics_stay_bounded() {
         let data = tempfile::tempdir().unwrap();
         write_manifest(
-            &data.path().join(".k-coder/plugins/verbose"),
+            &data.path().join(".kcode/plugins/verbose"),
             json!({
                 "name": "verbose-plugin",
                 "version": "v".repeat(129),
@@ -3469,9 +3469,9 @@ mod tests {
     }
 
     #[test]
-    fn indexes_codex_skill_with_optional_k_coder_metadata() {
+    fn indexes_codex_skill_with_optional_kcode_metadata() {
         let data = tempfile::tempdir().unwrap();
-        let plugin = data.path().join(".k-coder/plugins/review");
+        let plugin = data.path().join(".kcode/plugins/review");
         write_manifest(
             &plugin,
             json!({
@@ -3496,7 +3496,7 @@ mod tests {
     #[test]
     fn indexed_skill_debug_never_contains_its_body() {
         let data = tempfile::tempdir().unwrap();
-        let plugin = data.path().join(".k-coder/plugins/review");
+        let plugin = data.path().join(".kcode/plugins/review");
         write_manifest(
             &plugin,
             json!({
@@ -3523,7 +3523,7 @@ mod tests {
     #[test]
     fn resource_entry_budget_is_shared_by_every_skill_in_one_plugin() {
         let data = tempfile::tempdir().unwrap();
-        let plugin = data.path().join(".k-coder/plugins/bounded-tree");
+        let plugin = data.path().join(".kcode/plugins/bounded-tree");
         write_manifest(
             &plugin,
             json!({
@@ -3563,7 +3563,7 @@ mod tests {
         let data = tempfile::tempdir().unwrap();
         let workspace = tempfile::tempdir().unwrap();
         let outside = tempfile::tempdir().unwrap();
-        let plugin = data.path().join(".k-coder/plugins/review");
+        let plugin = data.path().join(".kcode/plugins/review");
         write_manifest(
             &plugin,
             json!({
@@ -3674,7 +3674,7 @@ mod tests {
     fn linked_skill_resource_invalidates_the_plugin_without_reading_the_target() {
         let data = tempfile::tempdir().unwrap();
         let outside = tempfile::tempdir().unwrap();
-        let plugin = data.path().join(".k-coder/plugins/review");
+        let plugin = data.path().join(".kcode/plugins/review");
         write_manifest(
             &plugin,
             json!({
@@ -3714,7 +3714,7 @@ mod tests {
     #[test]
     fn maps_stdio_http_and_oauth_plugin_mcp_entries_without_secrets() {
         let data = tempfile::tempdir().unwrap();
-        let plugin = data.path().join(".k-coder/plugins/review");
+        let plugin = data.path().join(".kcode/plugins/review");
         write_manifest(
             &plugin,
             json!({
@@ -3824,7 +3824,7 @@ mod tests {
     #[test]
     fn missing_mcp_command_degrades_available_skills_instead_of_invalidating_them() {
         let data = tempfile::tempdir().unwrap();
-        let plugin = data.path().join(".k-coder/plugins/review");
+        let plugin = data.path().join(".kcode/plugins/review");
         write_manifest(
             &plugin,
             json!({
@@ -3867,7 +3867,7 @@ mod tests {
     #[tokio::test]
     async fn missing_mcp_credential_degrades_skills_without_registering_mcp_tools() {
         let data = tempfile::tempdir().unwrap();
-        let plugin = data.path().join(".k-coder/plugins/review");
+        let plugin = data.path().join(".kcode/plugins/review");
         write_manifest(
             &plugin,
             json!({
@@ -3931,7 +3931,7 @@ mod tests {
             ("underscore", "a_b".to_string(), "server".to_string()),
             ("long", long_plugin_name, long_server_name),
         ] {
-            let plugin = data.path().join(".k-coder/plugins").join(folder);
+            let plugin = data.path().join(".kcode/plugins").join(folder);
             write_manifest(
                 &plugin,
                 json!({
@@ -3992,11 +3992,11 @@ mod tests {
             (
                 "broken",
                 "broken-plugin",
-                json!(["k-coder-definitely-missing-plugin-runtime"]),
+                json!(["KCode-definitely-missing-plugin-runtime"]),
                 json!([]),
             ),
         ] {
-            let plugin = data.path().join(".k-coder/plugins").join(folder);
+            let plugin = data.path().join(".kcode/plugins").join(folder);
             write_manifest(
                 &plugin,
                 json!({
@@ -4075,7 +4075,7 @@ mod tests {
         let fixture = Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("test-fixtures")
             .join("mcp-server.mjs");
-        let plugin = data.path().join(".k-coder/plugins/revocable");
+        let plugin = data.path().join(".kcode/plugins/revocable");
         write_manifest(
             &plugin,
             json!({
@@ -4184,7 +4184,7 @@ mod tests {
     #[test]
     fn plugin_enablement_persists_and_disappearance_resets_it() {
         let data = tempfile::tempdir().unwrap();
-        let plugin = data.path().join(".k-coder/plugins/review");
+        let plugin = data.path().join(".kcode/plugins/review");
         write_manifest(
             &plugin,
             json!({
@@ -4234,7 +4234,7 @@ mod tests {
     async fn host_failure_revokes_cached_reads_and_persisted_enablement() {
         let data = tempfile::tempdir().unwrap();
         let workspace = tempfile::tempdir().unwrap();
-        let plugin = data.path().join(".k-coder/plugins/review");
+        let plugin = data.path().join(".kcode/plugins/review");
         write_manifest(
             &plugin,
             json!({
@@ -4253,8 +4253,8 @@ mod tests {
         host.scan().unwrap();
         host.set_enabled("review-tools@local", true).unwrap();
         let retained = host.read_handlers()[0].clone();
-        fs::remove_dir_all(data.path().join(".k-coder/plugins")).unwrap();
-        fs::write(data.path().join(".k-coder/plugins"), "not a directory").unwrap();
+        fs::remove_dir_all(data.path().join(".kcode/plugins")).unwrap();
+        fs::write(data.path().join(".kcode/plugins"), "not a directory").unwrap();
 
         assert!(host.scan().is_err());
         assert!(host.overview().plugins.is_empty());
@@ -4288,7 +4288,7 @@ mod tests {
     #[test]
     fn delete_uses_the_disabled_indexed_direct_child_and_clears_setting() {
         let data = tempfile::tempdir().unwrap();
-        let plugin = data.path().join(".k-coder/plugins/review");
+        let plugin = data.path().join(".kcode/plugins/review");
         write_manifest(
             &plugin,
             json!({
@@ -4321,7 +4321,7 @@ mod tests {
     #[test]
     fn invalid_plugin_with_a_unique_safe_root_can_be_deleted_by_diagnostic_id() {
         let data = tempfile::tempdir().unwrap();
-        let plugin = data.path().join(".k-coder/plugins/broken");
+        let plugin = data.path().join(".kcode/plugins/broken");
         fs::create_dir_all(plugin.join(".codex-plugin")).unwrap();
         fs::write(plugin.join(".codex-plugin/plugin.json"), "{broken").unwrap();
         let host = plugin_host(data.path());
@@ -4348,8 +4348,8 @@ mod tests {
                 "description": "Outside"
             }),
         );
-        fs::create_dir_all(data.path().join(".k-coder/plugins")).unwrap();
-        let link = data.path().join(".k-coder/plugins/linked");
+        fs::create_dir_all(data.path().join(".kcode/plugins")).unwrap();
+        let link = data.path().join(".kcode/plugins/linked");
         #[cfg(unix)]
         std::os::unix::fs::symlink(outside.path(), &link).unwrap();
         #[cfg(windows)]
@@ -4390,7 +4390,7 @@ mod tests {
                 "description": "Must remain outside"
             }),
         );
-        let link = data.path().join(".k-coder/plugins");
+        let link = data.path().join(".kcode/plugins");
         #[cfg(unix)]
         std::os::unix::fs::symlink(outside.path(), &link).unwrap();
         #[cfg(windows)]
@@ -4410,7 +4410,7 @@ mod tests {
     fn linked_project_dot_koder_directory_is_rejected() {
         let workspace = tempfile::tempdir().unwrap();
         let outside = tempfile::tempdir().unwrap();
-        let link = workspace.path().join(".k-coder");
+        let link = workspace.path().join(".kcode");
         fs::create_dir_all(outside.path().join("plugins/review")).unwrap();
         #[cfg(unix)]
         std::os::unix::fs::symlink(outside.path(), &link).unwrap();
@@ -4440,7 +4440,7 @@ mod tests {
             overview.root_path,
             plugin_root_for_workspace(data.path()).to_string_lossy()
         );
-        assert!(!data.path().join(".k-coder").exists());
+        assert!(!data.path().join(".kcode").exists());
     }
 
     #[test]
@@ -4448,7 +4448,7 @@ mod tests {
         let first = tempfile::tempdir().unwrap();
         let second = tempfile::tempdir().unwrap();
         let projection = ProjectionDb::memory().unwrap();
-        let plugin = first.path().join(".k-coder/plugins/review");
+        let plugin = first.path().join(".kcode/plugins/review");
         write_manifest(
             &plugin,
             json!({
@@ -4632,7 +4632,7 @@ mod tests {
     #[test]
     fn plugin_revision_changes_when_indexed_skill_content_changes() {
         let data = tempfile::tempdir().unwrap();
-        let plugin = data.path().join(".k-coder/plugins/review");
+        let plugin = data.path().join(".kcode/plugins/review");
         write_manifest(
             &plugin,
             json!({

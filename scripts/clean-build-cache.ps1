@@ -11,7 +11,7 @@
 #   pnpm clean:cache
 #   powershell -NoProfile -ExecutionPolicy Bypass -File scripts/clean-build-cache.ps1
 #   ... -IncludeRelease                          # 连 debug/release 正常产物一起清（下次全量重编译）
-#   ... -DeployDir "D:\apps\k-coder"             # 顺带瘦身部署目录（清 deps/build 等中间件）
+#   ... -DeployDir "D:\apps\KCode"             # 顺带瘦身部署目录（清 deps/build 等中间件）
 
 param(
     [switch]$IncludeRelease,
@@ -88,7 +88,7 @@ if ($IncludeRelease) {
 
 if ($DeployDir) {
     Write-Host "== 顺带瘦身部署目录 $DeployDir ==" -ForegroundColor Cyan
-    foreach ($name in @("deps", "build", "incremental", ".fingerprint", "examples", "k_coder.pdb", "k-coder.d")) {
+    foreach ($name in @("deps", "build", "incremental", ".fingerprint", "examples", "k_coder.pdb", "k-coder.d", "kcode.pdb", "kcode.d", "KCode.pdb", "KCode.d")) {
         $freed += Remove-Junk -Path (Join-Path $DeployDir $name) -Label $name
     }
 }

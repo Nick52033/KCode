@@ -94,7 +94,7 @@ test("knowledge page renders live index progress and metrics", async ({ page }) 
             return [];
           case "workspace_state":
             return {
-              current: { id: "project-1", name: "k-coder", path: "D:\\code\\k-coder", trusted: true, lastOpenedAtMs: 2 },
+              current: { id: "project-1", name: "KCode", path: "D:\\code\\KCode", trusted: true, lastOpenedAtMs: 2 },
               recent: [],
             };
           case "list_workspace_directory":

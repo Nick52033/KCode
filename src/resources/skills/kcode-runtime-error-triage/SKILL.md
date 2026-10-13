@@ -1,5 +1,5 @@
 ---
-name: k-coder-runtime-error-triage
+name: kcode-runtime-error-triage
 description: 排查 KCode 桌面端运行时错误日志：一条命令一键巡检 runtime.jsonl 的 error 记录，自动分类「需要修复的产品缺陷 / 按设计或模型侧行为 / 待人工判定」并给出源码证据；也可按时间窗过滤、用 threadId 读 sessions/<threadId>.jsonl 压缩时间线复现单个失败对话。
 triggers:
   - 查下运行日志
@@ -22,7 +22,7 @@ category: observability
 
 ## 日志位置与两种格式（别混用字段名）
 
-运行时数据在 `%APPDATA%\com.kcoder.app\runtime-data\`：
+运行时数据在 `%APPDATA%\com.kcode.app\runtime-data\`：
 
 | 文件 | 格式 | 关键字段 |
 | --- | --- | --- |
@@ -33,7 +33,7 @@ category: observability
 
 ## 步骤
 
-0. **先确认日志位置（不同电脑不一样）**。运行时数据默认在 `%APPDATA%\com.kcoder.app\runtime-data\`，但不同电脑（含自定义数据目录、非 Windows 平台、便携版）路径可能不同。默认位置读不到、或用户没有明确说在这台电脑上时，先用 `request_user_input` 问一次日志目录或 `runtime.jsonl` 路径，不要凭默认路径猜。拿到位置后：
+0. **先确认日志位置（不同电脑不一样）**。运行时数据默认在 `%APPDATA%\com.kcode.app\runtime-data\`，但不同电脑（含自定义数据目录、非 Windows 平台、便携版）路径可能不同。默认位置读不到、或用户没有明确说在这台电脑上时，先用 `request_user_input` 问一次日志目录或 `runtime.jsonl` 路径，不要凭默认路径猜。拿到位置后：
 
    ```bash
    python <本 skill 目录>/scripts/triage_runtime_errors.py <子命令> --runtime-root "<用户给的 runtime-data 目录>"

@@ -12,8 +12,8 @@
 //   node scripts/verify-mobile-native.mjs restore   # 还原状态，移除验收设备
 //
 // 环境变量：
-//   KCODER_DATA_ROOT  覆盖应用数据目录（默认 %APPDATA%\com.kcoder.app\runtime-data）
-//   KCODER_LAN_IP     覆盖监听地址（默认自动探测）
+//   KCODE_DATA_ROOT  覆盖应用数据目录（默认 %APPDATA%\com.kcode.app\runtime-data）
+//   KCODE_LAN_IP     覆盖监听地址（默认自动探测）
 
 import { createHash, randomBytes } from "node:crypto";
 import fs from "node:fs";
@@ -24,8 +24,8 @@ import { connect as tlsConnect } from "node:tls";
 const ROAMING =
   process.env.APPDATA || path.join(os.homedir(), "AppData", "Roaming");
 const DATA_ROOT =
-  process.env.KCODER_DATA_ROOT ||
-  path.join(ROAMING, "com.kcoder.app", "runtime-data");
+  process.env.KCODE_DATA_ROOT ||
+  path.join(ROAMING, "com.kcode.app", "runtime-data");
 const MOBILE_DIR = path.join(DATA_ROOT, "mobile");
 const STATE_PATH = path.join(MOBILE_DIR, "state.json");
 const BACKUP_PATH = path.join(MOBILE_DIR, "state.json.verify-backup");
@@ -39,8 +39,8 @@ const REFRESH_TOKEN = "native-verify-refresh-token";
 const REVOKED_DEVICE_ID = "00000000-0000-4000-8000-0000000000a2";
 const REVOKED_DEVICE_SECRET = "native-verify-revoked-secret";
 
-const PORT = Number(process.env.KCODER_MOBILE_PORT || 8787);
-const HOST = process.env.KCODER_LAN_IP || detectLanIp();
+const PORT = Number(process.env.KCODE_MOBILE_PORT || 8787);
+const HOST = process.env.KCODE_LAN_IP || detectLanIp();
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -54,7 +54,7 @@ function detectLanIp() {
     }
   }
   if (candidates.length === 0) {
-    throw new Error("未找到局域网 IPv4 地址，请用 KCODER_LAN_IP 显式指定");
+    throw new Error("未找到局域网 IPv4 地址，请用 KCODE_LAN_IP 显式指定");
   }
   return candidates[0];
 }

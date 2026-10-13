@@ -1080,7 +1080,7 @@ mod tests {
     fn failed_command_arguments_survive_next_to_the_failure_reason() {
         let data = tempfile::tempdir().unwrap();
         let logger = StructuredLogger::new(data.path()).unwrap();
-        let command = "cd D:/code/Nick/k-coder; npx playwright test e2e/workbench.spec.ts -g \"commit button is disabled\"";
+        let command = "cd D:/code/Nick/KCode; npx playwright test e2e/workbench.spec.ts -g \"commit button is disabled\"";
         logger
             .log(
                 "error",

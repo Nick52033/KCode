@@ -202,8 +202,8 @@ mod tests {
     #[test]
     fn path_key_folds_prefix_separators_and_case() {
         assert_eq!(
-            workspace_path_key(r"\\?\D:\code\Nick\k-coder"),
-            workspace_path_key("D:/code/Nick/k-coder")
+            workspace_path_key(r"\\?\D:\code\Nick\KCode"),
+            workspace_path_key("D:/code/Nick/KCode")
         );
         if cfg!(windows) {
             assert_eq!(
@@ -217,10 +217,9 @@ mod tests {
     /// 会话必须归到项目清单里的那个键上，而不是自成一个分组。
     #[test]
     fn thread_bound_with_a_different_path_spelling_lands_on_the_project_key() {
-        let projects =
-            dedupe_projects(vec![record("p", "k-coder", r"\\?\D:\code\Nick\k-coder", 1)]);
+        let projects = dedupe_projects(vec![record("p", "KCode", r"\\?\D:\code\Nick\KCode", 1)]);
 
-        let key = resolve_thread_project(&thread("t", true, Some(r"D:\code\Nick\k-coder")), None);
+        let key = resolve_thread_project(&thread("t", true, Some(r"D:\code\Nick\KCode")), None);
 
         assert_eq!(key.as_deref(), Some(projects[0].key.as_str()));
     }
@@ -236,11 +235,11 @@ mod tests {
     /// 否则它们既不在项目分组里、又不属于独立会话，在手机上会彻底消失。
     #[test]
     fn legacy_threads_fall_back_to_the_active_workspace() {
-        let key = resolve_thread_project(&thread("t", true, None), Some(r"D:\code\Nick\k-coder"));
+        let key = resolve_thread_project(&thread("t", true, None), Some(r"D:\code\Nick\KCode"));
 
         assert_eq!(
             key.as_deref(),
-            Some(workspace_path_key(r"D:\code\Nick\k-coder").as_str())
+            Some(workspace_path_key(r"D:\code\Nick\KCode").as_str())
         );
     }
 

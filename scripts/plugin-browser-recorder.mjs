@@ -11,7 +11,7 @@ export async function createRecording(context) {
     if (toolGraph.length >= 512) { truncated = true; return; }
     toolGraph.push({ stepId: `step_${toolGraph.length + 1}`, toolName, argsTemplate });
   }
-  await context.exposeBinding('__kcoderRecordAction', (source, event) => {
+  await context.exposeBinding('__kcodeRecordAction', (source, event) => {
     if (source.frame !== source.page.mainFrame() || !event || typeof event !== 'object') return;
     if (event.kind === 'sensitive') { requiresManualSensitiveInput = true; return; }
     if (!['input', 'click'].includes(event.kind) || typeof event.selector !== 'string' || event.selector.length > 1000) return;
@@ -42,15 +42,15 @@ export async function createRecording(context) {
       if (!(target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement)) return;
       const attributes = ['type', 'name', 'id', 'autocomplete', 'aria-label'].map(name => target.getAttribute(name) || '').join(' ');
       if (/password|passcode|token|secret|api.?key|authorization|credit.?card|cc-number|密码|密钥/i.test(attributes)) {
-        void window.__kcoderRecordAction({ kind: 'sensitive' });
+        void window.__kcodeRecordAction({ kind: 'sensitive' });
       } else {
         // Do not read target.value, even for fields that appear non-sensitive.
-        void window.__kcoderRecordAction({ kind: 'input', selector: selector(target) });
+        void window.__kcodeRecordAction({ kind: 'input', selector: selector(target) });
       }
     }, true);
     document.addEventListener('click', event => {
       const target = event.target instanceof Element ? event.target.closest('button,a,input[type=submit],[role=button]') : null;
-      if (target) void window.__kcoderRecordAction({ kind: 'click', selector: selector(target) });
+      if (target) void window.__kcodeRecordAction({ kind: 'click', selector: selector(target) });
     }, true);
   });
   const trackPage = page => page.on('framenavigated', frame => {

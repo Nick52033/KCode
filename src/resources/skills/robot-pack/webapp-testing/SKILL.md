@@ -31,7 +31,7 @@ Is the page static HTML (no server, no build)?
              4. interact using the discovered selectors
 ```
 
-- **KCode browser tools** (`browser_navigate`, `browser_snapshot`, `browser_click`, `browser_type`, `browser_screenshot`, `browser_close`) are interactive and resumable across tool calls. Read `references/k-coder-browser-tools.md` for the exact contract and its limits.
+- **KCode browser tools** (`browser_navigate`, `browser_snapshot`, `browser_click`, `browser_type`, `browser_screenshot`, `browser_close`) are interactive and resumable across tool calls. Read `references/kcode-browser-tools.md` for the exact contract and its limits.
 - **Bundled harness** runs the whole pass in one `run_command` call. Read `references/playwright-harness.md` for the dependency, copy, invocation, timeout, and cleanup contract.
 
 ## Required preconditions

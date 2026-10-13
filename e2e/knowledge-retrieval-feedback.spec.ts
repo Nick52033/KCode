@@ -160,7 +160,7 @@ test("knowledge retrieval console searches, expands a citation and records feedb
             return { schemaVersion: 1, threadId: "thread-1", revision: 0, activeTurnId: null, pending: [] };
           case "workspace_state":
             return {
-              current: { id: "project-1", name: "k-coder", path: "D:\\code\\k-coder", trusted: true, lastOpenedAtMs: 2 },
+              current: { id: "project-1", name: "KCode", path: "D:\\code\\KCode", trusted: true, lastOpenedAtMs: 2 },
               recent: [],
             };
           case "git_status":
@@ -423,7 +423,7 @@ test("knowledge graph panel reviews a fact candidate and queries active relation
             return { schemaVersion: 1, threadId: "thread-1", revision: 0, activeTurnId: null, pending: [] };
           case "workspace_state":
             return {
-              current: { id: "project-1", name: "k-coder", path: "D:\\code\\k-coder", trusted: true, lastOpenedAtMs: 2 },
+              current: { id: "project-1", name: "KCode", path: "D:\\code\\KCode", trusted: true, lastOpenedAtMs: 2 },
               recent: [],
             };
           case "git_status":

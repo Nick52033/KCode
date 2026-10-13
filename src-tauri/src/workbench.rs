@@ -747,7 +747,20 @@ pub fn git_action(
                     "current branch has no upstream; push it once before pulling".into(),
                 )
             })?;
-            git(root, &["pull", "--ff-only"])
+            // 快进拉取成功后 HEAD 一定前移；HEAD 不变说明远端没有新提交，而 `git pull`
+            // 对这种无功而返的情况同样以退出码 0 结束并打印 "Already up to date."。
+            // 不区分这两种情况，界面就会把「什么都没拉」报告成「拉取完成」，
+            // 让用户以为远程更改已经进入工作区。比对 HEAD 而不是解析输出文案：
+            // Git 的提示会随界面语言变化。
+            let head_before = git(root, &["rev-parse", "HEAD"]).ok();
+            let output = git(root, &["pull", "--ff-only"])?;
+            let head_after = git(root, &["rev-parse", "HEAD"]).ok();
+            if let (Some(before), Some(after)) = (head_before, head_after) {
+                if before.trim() == after.trim() {
+                    return Ok("没有需要拉取的提交：本地分支已与远端一致".to_string());
+                }
+            }
+            Ok(output)
         }
         "push" => {
             if git(
@@ -946,7 +959,7 @@ mod tests {
     fn init_repository(root: &Path) {
         git(root, &["init"]).unwrap();
         git(root, &["config", "user.email", "test@example.com"]).unwrap();
-        git(root, &["config", "user.name", "k-Coder Tests"]).unwrap();
+        git(root, &["config", "user.name", "KCode Tests"]).unwrap();
     }
 
     /// 直接调用 `git` 二进制、并且只使用显式传入的配置。
@@ -979,16 +992,16 @@ mod tests {
         use std::os::windows::ffi::{OsStrExt, OsStringExt};
 
         assert_eq!(
-            shell_compatible_path(Path::new(r"\\?\D:\code\k-coder\README.md")),
-            PathBuf::from(r"D:\code\k-coder\README.md")
+            shell_compatible_path(Path::new(r"\\?\D:\code\KCode\README.md")),
+            PathBuf::from(r"D:\code\KCode\README.md")
         );
         assert_eq!(
             shell_compatible_path(Path::new(r"\\?\UNC\server\share\README.md")),
             PathBuf::from(r"\\server\share\README.md")
         );
         assert_eq!(
-            shell_compatible_path(Path::new(r"D:\code\k-coder\README.md")),
-            PathBuf::from(r"D:\code\k-coder\README.md")
+            shell_compatible_path(Path::new(r"D:\code\KCode\README.md")),
+            PathBuf::from(r"D:\code\KCode\README.md")
         );
 
         let non_unicode =
@@ -1296,9 +1309,40 @@ mod tests {
         git_action(peer.path(), "commit", &[], Some("remote change"), true).unwrap();
         git_action(peer.path(), "push", &[], None, true).unwrap();
 
-        git_action(local.path(), "pull", &[], None, true).unwrap();
+        // 确实快进到了新提交：不能被报告成「没有需要拉取的提交」。
+        let pull_notice = git_action(local.path(), "pull", &[], None, true).unwrap();
+        assert!(
+            !pull_notice.contains("没有需要拉取"),
+            "a real fast-forward must not be reported as a no-op: {pull_notice}"
+        );
         let pulled = std::fs::read_to_string(local.path().join("remote.txt")).unwrap();
         assert_eq!(pulled.replace("\r\n", "\n"), "from remote\n");
+    }
+
+    /// 远端没有新提交时 `git pull --ff-only` 同样以退出码 0 结束。后端必须把这种
+    /// 无功而返的情况如实说出来，否则界面会报告笼统的「拉取完成」，让用户以为
+    /// 远程的更改已经进入工作区。
+    #[test]
+    fn git_pull_reports_when_there_is_nothing_to_pull() {
+        let local = tempfile::tempdir().unwrap();
+        let remote = tempfile::tempdir().unwrap();
+        init_repository(local.path());
+        git(remote.path(), &["init", "--bare"]).unwrap();
+
+        std::fs::write(local.path().join("tracked.txt"), "first\n").unwrap();
+        git_action(local.path(), "stage", &[], None, false).unwrap();
+        git_action(local.path(), "commit", &[], Some("initial"), true).unwrap();
+        git(local.path(), &["branch", "-M", "main"]).unwrap();
+        let remote_path = remote.path().to_string_lossy().into_owned();
+        git(local.path(), &["remote", "add", "origin", &remote_path]).unwrap();
+        git_action(local.path(), "push", &[], None, true).unwrap();
+
+        // 已同步：必须明确告知没有可拉取的内容，而不是让调用方以为拉回了一批新提交。
+        let up_to_date = git_action(local.path(), "pull", &[], None, true).unwrap();
+        assert!(
+            up_to_date.starts_with("没有需要拉取的提交"),
+            "expected an explicit no-op notice, got: {up_to_date}"
+        );
     }
 
     #[test]

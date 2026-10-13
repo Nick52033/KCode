@@ -12,7 +12,7 @@ $destination = [System.IO.Path]::GetFullPath(
 )
 $temporaryRoot = [System.IO.Path]::GetFullPath([System.IO.Path]::GetTempPath())
 $stagingRoot = [System.IO.Path]::GetFullPath(
-    (Join-Path $temporaryRoot "k-coder-ripgrep-$([guid]::NewGuid())")
+    (Join-Path $temporaryRoot "KCode-ripgrep-$([guid]::NewGuid())")
 )
 
 if (-not $stagingRoot.StartsWith($temporaryRoot, [System.StringComparison]::OrdinalIgnoreCase)) {

@@ -139,7 +139,7 @@ pub async fn run_retrieval_baseline() -> Result<RetrievalBaselineReport, String>
 }
 
 fn temporary_root() -> Result<PathBuf, String> {
-    let root = std::env::temp_dir().join(format!("k-coder-retrieval-baseline-{}", Uuid::new_v4()));
+    let root = std::env::temp_dir().join(format!("KCode-retrieval-baseline-{}", Uuid::new_v4()));
     std::fs::create_dir_all(&root).map_err(|error| error.to_string())?;
     Ok(root)
 }

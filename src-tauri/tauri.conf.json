@@ -3,7 +3,7 @@
   "productName": "KCode",
   "mainBinaryName": "KCode",
   "version": "0.10.0",
-  "identifier": "com.kcoder.app",
+  "identifier": "com.kcode.app",
   "build": {
     "beforeDevCommand": "pnpm dev",
     "devUrl": "http://localhost:1420",

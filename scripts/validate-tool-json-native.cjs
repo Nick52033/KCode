@@ -60,7 +60,7 @@ const path = require('node:path');
     });
     const threadId = await selectThread();
     await page.evaluate(() => window.toolJsonValidation.useWorkbenchStore.getState().sendMessage('验证提问参数恢复'));
-    await expect(page.getByText('k-Coder 提问', { exact: true })).toBeVisible({ timeout: 15000 });
+    await expect(page.getByText('KCode 提问', { exact: true })).toBeVisible({ timeout: 15000 });
     expect(attempt).toBe(2);
     expect(calls[0].request.messages).toEqual(calls[1].request.messages);
     for (const q of questions) await page.getByRole('button', { name: q.options[0], exact: true }).click();

@@ -122,7 +122,7 @@ test.beforeEach(async ({ page }) => {
       const day = String(date.getDate()).padStart(2, "0");
       return `${year}-${month}-${day}`;
     };
-    const threadFixture = { schemaVersion: 1, id: "thread-1", title: "Phase 6 workbench", createdAtMs: 1, updatedAtMs: 2, archived: false, inProject: true, workspacePath: "D:\\code\\k-coder" };
+    const threadFixture = { schemaVersion: 1, id: "thread-1", title: "Phase 6 workbench", createdAtMs: 1, updatedAtMs: 2, archived: false, inProject: true, workspacePath: "D:\\code\\KCode" };
     const threadOverride = localStorage.getItem("kcoder_e2e_thread_override");
     const thread = threadOverride ? { ...threadFixture, ...JSON.parse(threadOverride) } : threadFixture;
     const secondThread = { schemaVersion: 1, id: "thread-2", title: "Parallel conversation", createdAtMs: 3, updatedAtMs: 3, archived: false };
@@ -276,9 +276,9 @@ test.beforeEach(async ({ page }) => {
     let approvalMode: "ask" | "full_access" = "ask";
     let reasoningEffort: "off" | "minimal" | "low" | "medium" | "high" | "x_high" = "medium";
     let workspaceState = {
-      current: { id: "project-1", name: "k-coder", path: "D:\\code\\k-coder", trusted: true, lastOpenedAtMs: 2 },
+      current: { id: "project-1", name: "KCode", path: "D:\\code\\KCode", trusted: true, lastOpenedAtMs: 2 },
       recent: [
-        { id: "project-1", name: "k-coder", path: "D:\\code\\k-coder", trusted: true, lastOpenedAtMs: 2 },
+        { id: "project-1", name: "KCode", path: "D:\\code\\KCode", trusted: true, lastOpenedAtMs: 2 },
         { id: "project-2", name: "paypro-platform-be", path: "D:\\code\\paypro-platform-be", trusted: true, lastOpenedAtMs: 1 },
       ] as Array<{ id: string; name: string; path: string; trusted: boolean; lastOpenedAtMs: number }>,
     };
@@ -338,16 +338,16 @@ test.beforeEach(async ({ page }) => {
     const extensionOverview = {
       schemaVersion: 1,
       configPaths: [
-        "C:\\Users\\demo\\AppData\\Local\\k-coder\\runtime-data\\extensions.json",
-        "C:\\Users\\demo\\AppData\\Local\\k-coder\\runtime-data\\mcp.json",
-        "D:\\code\\k-coder\\.k-coder\\extensions.json",
-        "D:\\code\\k-coder\\.k-coder\\mcp.json",
+        "C:\\Users\\demo\\AppData\\Local\\KCode\\runtime-data\\extensions.json",
+        "C:\\Users\\demo\\AppData\\Local\\KCode\\runtime-data\\mcp.json",
+        "D:\\code\\KCode\\.kcode\\extensions.json",
+        "D:\\code\\KCode\\.kcode\\mcp.json",
       ],
-      instructions: [{ path: "D:\\code\\k-coder\\AGENTS.md", scope: "project", priority: 200, bytes: 120 }],
+      instructions: [{ path: "D:\\code\\KCode\\AGENTS.md", scope: "project", priority: 200, bytes: 120 }],
       skills: [
-        { name: "workspace-review", description: "Built-in workspace review", path: "D:\\apps\\k-coder\\resources\\skills\\workspace-review\\SKILL.md", scope: "builtin", risk: "read", category: "quality_review", triggers: ["workspace review"], enabled: true, managedByRobot: false },
-        { name: "review", description: "Review code safely", path: "D:\\code\\k-coder\\.k-coder\\skills\\review\\SKILL.md", scope: "project", risk: "read", category: "quality_review", triggers: ["review"], enabled: true, managedByRobot: false },
-        { name: "requirements-intake", description: "Robot requirements intake", path: "D:\\apps\\k-coder\\resources\\skills\\robot-pack\\requirements-intake\\SKILL.md", scope: "builtin", risk: "read", category: "requirements_planning", triggers: ["requirements"], enabled: true, managedByRobot: true },
+        { name: "workspace-review", description: "Built-in workspace review", path: "D:\\apps\\KCode\\resources\\skills\\workspace-review\\SKILL.md", scope: "builtin", risk: "read", category: "quality_review", triggers: ["workspace review"], enabled: true, managedByRobot: false },
+        { name: "review", description: "Review code safely", path: "D:\\code\\KCode\\.kcode\\skills\\review\\SKILL.md", scope: "project", risk: "read", category: "quality_review", triggers: ["review"], enabled: true, managedByRobot: false },
+        { name: "requirements-intake", description: "Robot requirements intake", path: "D:\\apps\\KCode\\resources\\skills\\robot-pack\\requirements-intake\\SKILL.md", scope: "builtin", risk: "read", category: "requirements_planning", triggers: ["requirements"], enabled: true, managedByRobot: true },
       ],
       mcpServers: [{ id: "local", transport: "stdio", enabled: true, state: "ready", toolCount: 2, credentials: [], error: null }],
       hooks: [{ id: "guard", phase: "before", tool: "mcp__local__*", enabled: true }],
@@ -356,7 +356,7 @@ test.beforeEach(async ({ page }) => {
     };
     let userRules = {
       schemaVersion: 1,
-      path: "C:\\Users\\demo\\AppData\\Local\\k-coder\\runtime-data\\user-rules.json",
+      path: "C:\\Users\\demo\\AppData\\Local\\KCode\\runtime-data\\user-rules.json",
       rules: [{
         id: "11111111-1111-4111-8111-111111111111",
         title: "方法注释",
@@ -370,7 +370,7 @@ test.beforeEach(async ({ page }) => {
       schemaVersion: 2,
       global: {
         scope: "global",
-        path: "C:\\Users\\demo\\AppData\\Local\\k-coder\\runtime-data\\mcp.json",
+        path: "C:\\Users\\demo\\AppData\\Local\\KCode\\runtime-data\\mcp.json",
         exists: true,
         content: `${JSON.stringify({
           mcpServers: {
@@ -379,7 +379,7 @@ test.beforeEach(async ({ page }) => {
               enabled: true,
               timeoutMs: 30_000,
               command: "npx",
-              args: ["-y", "@modelcontextprotocol/server-filesystem", "D:\\code\\k-coder"],
+              args: ["-y", "@modelcontextprotocol/server-filesystem", "D:\\code\\KCode"],
               secret_env: {},
             },
           },
@@ -388,19 +388,19 @@ test.beforeEach(async ({ page }) => {
       },
       project: {
         scope: "project",
-        path: "D:\\code\\k-coder\\.k-coder\\mcp.json",
+        path: "D:\\code\\KCode\\.kcode\\mcp.json",
         exists: false,
         content: `${JSON.stringify({ mcpServers: {} }, null, 2)}\n`,
         error: null,
       },
       overview: extensionOverview,
     };
-    const pluginRootPath = "D:\\code\\k-coder\\.k-coder\\plugins";
+    const pluginRootPath = "D:\\code\\KCode\\.kcode\\plugins";
     let pluginOverview = {
       schemaVersion: 1,
       rootPath: pluginRootPath,
-      builtinRootPath: "D:\\code\\k-coder\\plugins",
-      localRootPath: "C:\\Users\\demo\\AppData\\Local\\k-coder\\plugins",
+      builtinRootPath: "D:\\code\\KCode\\plugins",
+      localRootPath: "C:\\Users\\demo\\AppData\\Local\\KCode\\plugins",
       projectRootPath: pluginRootPath,
       plugins: [
         {
@@ -568,7 +568,7 @@ test.beforeEach(async ({ page }) => {
           unifiedDiff: "--- a/src/App.css\n+++ b/src/App.css\n@@ -1 +1 @@\n-old\n+new\n",
         }],
       }] },
-      workspace_state: { current: { id: "project-1", name: "k-coder", path: "D:\\code\\k-coder", trusted: true, lastOpenedAtMs: 2 }, recent: [] },
+      workspace_state: { current: { id: "project-1", name: "KCode", path: "D:\\code\\KCode", trusted: true, lastOpenedAtMs: 2 }, recent: [] },
       list_workspace_directory: [
         { name: "src", path: "src", isDirectory: true, size: null, modifiedAtMs: 2 },
         { name: "README.md", path: "README.md", isDirectory: false, size: 120, modifiedAtMs: 2 },
@@ -579,20 +579,20 @@ test.beforeEach(async ({ page }) => {
         { name: "package.json", path: "package.json", isDirectory: false, size: 640, modifiedAtMs: 2 },
         { name: "App.css", path: "src/App.css", isDirectory: false, size: 320, modifiedAtMs: 2 },
       ],
-      preview_workspace_file: { path: "README.md", name: "README.md", language: "markdown", content: "# k-Coder", dataUrl: null, size: 9, truncated: false, editable: true, contentHash: "hash-readme" },
-      save_workspace_file: { path: "README.md", name: "README.md", language: "markdown", content: "# k-Coder\n\nEdited", dataUrl: null, size: 17, truncated: false, editable: true, contentHash: "hash-edited" },
+      preview_workspace_file: { path: "README.md", name: "README.md", language: "markdown", content: "# KCode", dataUrl: null, size: 9, truncated: false, editable: true, contentHash: "hash-readme" },
+      save_workspace_file: { path: "README.md", name: "README.md", language: "markdown", content: "# KCode\n\nEdited", dataUrl: null, size: 17, truncated: false, editable: true, contentHash: "hash-edited" },
       git_status: { isRepository: true, branch: "main", upstream: "origin/main", ahead: 0, behind: 0, files: [{ path: "src/App.tsx", indexStatus: " ", worktreeStatus: "M" }] },
       git_branches: { current: "main", branches: ["main", "feature/workbench"] },
       extension_overview: extensionOverview,
       list_subagents: [{
         schemaVersion: 1, id: "agent-1", parentAgentId: null, parentThreadId: "thread-1", threadId: "thread-agent-1",
-        label: "检查后端", task: "分析后端接口", state: "completed", depth: 1, workspaceRoot: "D:\\code\\k-coder",
+        label: "检查后端", task: "分析后端接口", state: "completed", depth: 1, workspaceRoot: "D:\\code\\KCode",
         capabilities: ["list_directory", "read_file"], tokenBudget: null, tokensUsed: 420, timeoutMs: 600000,
         createdAtMs: 2, updatedAtMs: 3, summary: "后端检查完成", error: null,
       }],
       create_subagent: {
         schemaVersion: 1, id: "agent-2", parentAgentId: null, parentThreadId: "thread-1", threadId: "thread-agent-2",
-        label: "检查测试", task: "检查测试", state: "running", depth: 1, workspaceRoot: "D:\\code\\k-coder",
+        label: "检查测试", task: "检查测试", state: "running", depth: 1, workspaceRoot: "D:\\code\\KCode",
         capabilities: ["list_directory", "read_file"], tokenBudget: null, tokensUsed: 0, timeoutMs: 600000,
         createdAtMs: 4, updatedAtMs: 4, summary: null, error: null,
       },
@@ -1182,7 +1182,7 @@ test.beforeEach(async ({ page }) => {
           }
           if (command === "read_pty_output") {
             const cursor = Number(args?.cursor ?? 0);
-            const text = localStorage.getItem("kcoder_e2e_pty_output") ?? "PS D:\\code\\k-coder> ";
+            const text = localStorage.getItem("kcoder_e2e_pty_output") ?? "PS D:\\code\\KCode> ";
             const chunks = cursor === 0 ? [{ cursor: 0, text }] : [];
             return { chunks, nextCursor: cursor === 0 ? 1 : cursor, oldestCursor: 0, truncatedBeforeCursor: false };
           }
@@ -1823,7 +1823,7 @@ test("polls, cancels, and refreshes knowledge sources without layout overflow", 
       id,
       name,
       scope: "workspace",
-      scopeKey: "D:\\code\\k-coder",
+      scopeKey: "D:\\code\\KCode",
       enabled: true,
       sourceCount,
       indexedChunkCount,
@@ -1970,7 +1970,7 @@ test("polls, cancels, and refreshes knowledge sources without layout overflow", 
   await page.evaluate(() => {
     localStorage.setItem(
       "kcoder_e2e_attachment_dialog_paths",
-      JSON.stringify(["D:\\code\\k-coder\\docs\\knowledge\\picked.md"]),
+      JSON.stringify(["D:\\code\\KCode\\docs\\knowledge\\picked.md"]),
     );
   });
   await settings.getByRole("button", { name: "选择文件" }).first().click();
@@ -2210,17 +2210,17 @@ test("supports the primary workbench inspection flow", async ({ page }, testInfo
   expect(editorBox?.width ?? 0).toBeGreaterThan(340);
   expect(editorBox?.height ?? 0).toBeGreaterThan(380);
   await expect(editor.locator(".line-numbers").first()).toHaveText("1");
-  await expect(editor.locator(".view-lines")).toContainText("# k-Coder");
+  await expect(editor.locator(".view-lines")).toContainText("# KCode");
   await expect(editor.locator('[class*="mtk"]')).not.toHaveCount(0);
   await editor.click();
   await page.keyboard.press("Control+A");
-  await page.keyboard.insertText("# k-Coder\n\nEdited");
+  await page.keyboard.insertText("# KCode\n\nEdited");
   const saveButton = page.getByRole("button", { name: "保存", exact: true });
   await expect(saveButton).toBeEnabled();
   await saveButton.click();
   await expect(page.getByText("已保存", { exact: true })).toBeVisible();
   await expect.poll(() => page.evaluate(() => (window as unknown as { __invocationArgs: Record<string, unknown> }).__invocationArgs.save_workspace_file)).toEqual({
-    request: { path: "README.md", content: "# k-Coder\n\nEdited", expectedHash: "hash-readme" },
+    request: { path: "README.md", content: "# KCode\n\nEdited", expectedHash: "hash-readme" },
   });
   await page.screenshot({ path: testInfo.outputPath("workspace-code-editor.png"), fullPage: true });
   await previewDialog.getByRole("button", { name: "关闭预览" }).click();
@@ -2473,7 +2473,7 @@ test("edits global and project mcp.json directly", async ({ page }, testInfo) =>
       local: {
         type: "stdio",
         command: "npx",
-        args: ["-y", "@modelcontextprotocol/server-filesystem", "D:\\code\\k-coder"],
+        args: ["-y", "@modelcontextprotocol/server-filesystem", "D:\\code\\KCode"],
       },
       github: {
         enabled: true,
@@ -2521,9 +2521,9 @@ test("edits global and project mcp.json directly", async ({ page }, testInfo) =>
 
   await dialog.getByRole("button", { name: "当前项目", exact: true }).click();
   const projectPath = dialog.locator(".mcp-config-path");
-  await expect(projectPath).toHaveAttribute("title", /\.k-coder\\mcp\.json$/);
+  await expect(projectPath).toHaveAttribute("title", /\.kcode\\mcp\.json$/);
   await expect(projectPath).toContainText("尚未创建");
-  const jsonEditor = dialog.getByLabel(/\.k-coder\\mcp\.json JSON$/);
+  const jsonEditor = dialog.getByLabel(/\.kcode\\mcp\.json JSON$/);
   await expect(jsonEditor).toHaveValue(/"mcpServers": \{\}/);
   await jsonEditor.fill(JSON.stringify({
     mcpServers: [{ id: "legacy", transport: "stdio", command: ["node"] }],
@@ -2598,7 +2598,7 @@ test("manages local plugins from backend facts", async ({ page }, testInfo) => {
   await expect.poll(() => page.evaluate(() => (
     window as unknown as { __invocationArgs: Record<string, unknown> }
   ).__invocationArgs.plugin_overview)).toEqual({ refresh: true });
-  await expect(settings.getByTitle("D:\\code\\k-coder\\.k-coder\\plugins", { exact: true })).toContainText(/\.k-coder\\plugins/);
+  await expect(settings.getByTitle("D:\\code\\KCode\\.kcode\\plugins", { exact: true })).toContainText(/\.kcode\\plugins/);
 
   await page.evaluate(() => localStorage.setItem("kcoder_e2e_attachment_dialog_paths", JSON.stringify("D:\\plugins\\portable")));
   await settings.getByRole("button", { name: "安装到本地" }).click();
@@ -3115,7 +3115,7 @@ test("keeps the mid-width workbench bounded without toolbar overflow", async ({ 
   const toolbar = panel.locator(".panel-toolbar");
   const workspaceButton = toolbar.locator(".workspace-current");
   await expect(panel).toBeVisible();
-  await expect(workspaceButton).toContainText("k-coder", { ignoreCase: true });
+  await expect(workspaceButton).toContainText("KCode", { ignoreCase: true });
   await expect.poll(() => panel.evaluate((element) => element.getBoundingClientRect().width)).toBeLessThanOrEqual(400);
 
   const panelBox = await panel.evaluate((element) => { const rect = element.getBoundingClientRect(); return { x: rect.x, y: rect.y, width: rect.width, height: rect.height }; });
@@ -3173,7 +3173,7 @@ test("keeps messages, composer, and send action inside the conversation when the
 
 test("selects the active workspace project from the composer", async ({ page }, testInfo) => {
   await page.addInitScript(() => {
-    const currentPath = "\\\\?\\D:\\code\\k-coder";
+    const currentPath = "\\\\?\\D:\\code\\KCode";
     // A stale presentation-only project group must not override the persisted thread workspace.
     localStorage.setItem("kcoder_thread_project_map", JSON.stringify({ "thread-1": "D:\\code\\paypro-platform-be" }));
     localStorage.setItem("kcoder_known_projects", JSON.stringify([
@@ -3183,23 +3183,23 @@ test("selects the active workspace project from the composer", async ({ page }, 
     localStorage.setItem("kcoder_e2e_workspace_path", currentPath);
     localStorage.setItem("kcoder_e2e_thread_workspace_path", currentPath);
     localStorage.setItem("kcoder_e2e_recent_projects", JSON.stringify([
-      { id: "project-1", name: "k-coder", path: currentPath, trusted: true, lastOpenedAtMs: 3 },
+      { id: "project-1", name: "KCode", path: currentPath, trusted: true, lastOpenedAtMs: 3 },
       { id: "project-2", name: "paypro-platform-be", path: "\\\\?\\D:\\code\\paypro-platform-be", trusted: true, lastOpenedAtMs: 2 },
       { id: "project-3", name: "shared-repo", path: "\\\\?\\UNC\\server\\share\\repo", trusted: true, lastOpenedAtMs: 1 },
     ]));
   });
   await page.goto("/");
   const composer = page.locator(".composer");
-  const initialTrigger = composer.getByRole("button", { name: "当前项目 k-coder" });
+  const initialTrigger = composer.getByRole("button", { name: "当前项目 KCode" });
   await expect(initialTrigger).toBeVisible();
-  await expect(initialTrigger).toHaveAttribute("title", "D:\\code\\k-coder");
-  await expect(page.locator(".workspace-current")).toHaveAttribute("title", "D:\\code\\k-coder");
+  await expect(initialTrigger).toHaveAttribute("title", "D:\\code\\KCode");
+  await expect(page.locator(".workspace-current")).toHaveAttribute("title", "D:\\code\\KCode");
 
   await initialTrigger.click();
   const dialog = page.getByRole("dialog", { name: "选择项目" });
   await expect(dialog).toBeVisible();
   await expect(dialog.getByRole("option")).toHaveCount(3);
-  await expect(dialog.getByText("D:\\code\\k-coder", { exact: true })).toBeVisible();
+  await expect(dialog.getByText("D:\\code\\KCode", { exact: true })).toBeVisible();
   await expect(dialog.getByText("\\\\server\\share\\repo", { exact: true })).toBeVisible();
   expect(await dialog.textContent()).not.toContain("\\\\?\\");
   const search = dialog.getByRole("textbox", { name: "搜索项目" });
@@ -3265,7 +3265,7 @@ test("reports system opener failures inside the file preview", async ({ page }) 
 test("creates a standalone conversation from the lower-left project menu", async ({ page }, testInfo) => {
   await page.goto("/");
   const composer = page.locator(".composer");
-  await composer.getByRole("button", { name: "当前项目 k-coder" }).click();
+  await composer.getByRole("button", { name: "当前项目 KCode" }).click();
 
   const dialog = page.getByRole("dialog", { name: "选择项目" });
   const standalone = dialog.getByRole("button", { name: "不在项目中", exact: true });
@@ -3326,36 +3326,36 @@ test("keeps a migrated unbound project thread in the current project", async ({ 
   });
   await page.reload();
 
-  await expect(page.locator(".composer").getByRole("button", { name: "当前项目 k-coder" })).toBeVisible();
+  await expect(page.locator(".composer").getByRole("button", { name: "当前项目 KCode" })).toBeVisible();
   await expect.poll(() => page.evaluate(() => {
     const raw = localStorage.getItem("kcoder_thread_project_map");
     return raw ? (JSON.parse(raw) as Record<string, string>)["thread-1"] : null;
-  })).toBe("D:\\code\\k-coder");
+  })).toBe("D:\\code\\KCode");
 });
 
 test("keeps project selection in sync and removes groups without deleting conversations", async ({ page }, testInfo) => {
   await page.addInitScript(() => {
-    const currentPath = "D:\\code\\k-coder";
+    const currentPath = "D:\\code\\KCode";
     const codexPath = "D:\\code\\codex";
     localStorage.setItem("kcoder_thread_project_map", JSON.stringify({ "thread-1": currentPath }));
     localStorage.setItem("kcoder_known_projects", JSON.stringify([currentPath, codexPath]));
     localStorage.setItem("kcoder_e2e_workspace_path", currentPath);
     localStorage.setItem("kcoder_e2e_recent_projects", JSON.stringify([
-      { id: "project-1", name: "k-coder", path: currentPath, trusted: true, lastOpenedAtMs: 4 },
+      { id: "project-1", name: "KCode", path: currentPath, trusted: true, lastOpenedAtMs: 4 },
       { id: "project-2", name: "codex", path: codexPath, trusted: true, lastOpenedAtMs: 3 },
       { id: "project-3", name: "Nick", path: "D:\\code\\Nick", trusted: true, lastOpenedAtMs: 2 },
-      { id: "project-4", name: "src-tauri", path: "D:\\code\\Nick\\k-coder\\src-tauri", trusted: true, lastOpenedAtMs: 1 },
+      { id: "project-4", name: "src-tauri", path: "D:\\code\\Nick\\KCode\\src-tauri", trusted: true, lastOpenedAtMs: 1 },
     ]));
   });
   await page.goto("/");
 
   const composer = page.locator(".composer");
-  const projectTrigger = composer.getByRole("button", { name: "当前项目 k-coder" });
+  const projectTrigger = composer.getByRole("button", { name: "当前项目 KCode" });
   await expect(projectTrigger).toBeVisible();
   await projectTrigger.click();
   const dialog = page.getByRole("dialog", { name: "选择项目" });
   await expect(dialog.getByRole("option")).toHaveCount(2);
-  await expect(dialog.getByRole("option", { name: /k-coder/ })).toBeVisible();
+  await expect(dialog.getByRole("option", { name: /KCode/ })).toBeVisible();
   const codexOption = dialog.getByRole("option", { name: /codex/ });
   await expect(codexOption).toBeVisible();
   await expect(dialog.getByText("Nick", { exact: true })).toHaveCount(0);
@@ -3366,13 +3366,13 @@ test("keeps project selection in sync and removes groups without deleting conver
     await page.getByRole("tab", { name: "项目" }).click();
     const projectList = page.getByRole("navigation", { name: "项目列表" });
     await expect(projectList.locator(".project-group")).toHaveCount(2);
-    const kCoderGroup = projectList.locator(".project-group").filter({ hasText: "k-coder" });
-    await expect(kCoderGroup.locator(".project-group-toggle")).toHaveAttribute("aria-current", "page");
-    await kCoderGroup.getByRole("button", { name: "更多操作" }).click();
-    const removeBoundProject = kCoderGroup.getByRole("button", { name: "删除分组", exact: true });
+    const KCodeGroup = projectList.locator(".project-group").filter({ hasText: "KCode" });
+    await expect(KCodeGroup.locator(".project-group-toggle")).toHaveAttribute("aria-current", "page");
+    await KCodeGroup.getByRole("button", { name: "更多操作" }).click();
+    const removeBoundProject = KCodeGroup.getByRole("button", { name: "删除分组", exact: true });
     await expect(removeBoundProject).toBeEnabled();
     await expect(removeBoundProject).toHaveAttribute("title", "删除项目分组");
-    await kCoderGroup.getByRole("button", { name: "更多操作" }).click();
+    await KCodeGroup.getByRole("button", { name: "更多操作" }).click();
     await projectTrigger.click();
   }
 
@@ -3383,11 +3383,11 @@ test("keeps project selection in sync and removes groups without deleting conver
     const projectList = page.getByRole("navigation", { name: "项目列表" });
     const codexGroup = projectList.locator(".project-group").filter({ hasText: "codex" });
     await expect(codexGroup.locator(".project-group-toggle")).toHaveAttribute("aria-current", "page");
-    const kCoderGroup = projectList.locator(".project-group").filter({ hasText: "k-coder" });
-    await kCoderGroup.getByRole("button", { name: "展开项目" }).click();
-    await kCoderGroup.getByText("Phase 6 workbench", { exact: true }).click();
-    await expect(composer.getByRole("button", { name: "当前项目 k-coder" })).toBeVisible();
-    await expect(kCoderGroup.locator(".project-group-toggle")).toHaveAttribute("aria-current", "page");
+    const KCodeGroup = projectList.locator(".project-group").filter({ hasText: "KCode" });
+    await KCodeGroup.getByRole("button", { name: "展开项目" }).click();
+    await KCodeGroup.getByText("Phase 6 workbench", { exact: true }).click();
+    await expect(composer.getByRole("button", { name: "当前项目 KCode" })).toBeVisible();
+    await expect(KCodeGroup.locator(".project-group-toggle")).toHaveAttribute("aria-current", "page");
 
     let deletePrompt = "";
     page.once("dialog", async (dialog) => {
@@ -3395,25 +3395,25 @@ test("keeps project selection in sync and removes groups without deleting conver
       expect(dialog.type()).toBe("confirm");
       await dialog.accept();
     });
-    await kCoderGroup.getByRole("button", { name: "更多操作" }).click();
-    await kCoderGroup.getByRole("button", { name: "删除分组", exact: true }).click();
+    await KCodeGroup.getByRole("button", { name: "更多操作" }).click();
+    await KCodeGroup.getByRole("button", { name: "删除分组", exact: true }).click();
 
     expect(deletePrompt).toContain("1 个会话不会被删除");
     expect(deletePrompt).toContain("项目文件不会被删除");
-    await expect(kCoderGroup).toHaveCount(0);
+    await expect(KCodeGroup).toHaveCount(0);
     await expect(projectList.locator(".project-group")).toHaveCount(1);
     await page.getByRole("tab", { name: "会话" }).click();
     await expect(page.getByRole("navigation", { name: "会话列表" }).getByText("Phase 6 workbench", { exact: true })).toBeVisible();
-    await expect(composer.getByRole("button", { name: "当前项目 k-coder" })).toBeVisible();
+    await expect(composer.getByRole("button", { name: "当前项目 KCode" })).toBeVisible();
     await expect.poll(() => page.evaluate(() => JSON.parse(
       localStorage.getItem("kcoder_hidden_project_groups") ?? "[]",
-    ))).toEqual(["D:\\code\\k-coder"]);
+    ))).toEqual(["D:\\code\\KCode"]);
     await expect.poll(() => page.evaluate(() => JSON.parse(
       localStorage.getItem("kcoder_known_projects") ?? "[]",
     ))).toEqual(["D:\\code\\codex"]);
     await expect.poll(() => page.evaluate(() => JSON.parse(
       localStorage.getItem("kcoder_thread_project_map") ?? "{}",
-    )["thread-1"])).toBe("D:\\code\\k-coder");
+    )["thread-1"])).toBe("D:\\code\\KCode");
     expect(await page.evaluate(() => (
       window as unknown as { __invoked: string[] }
     ).__invoked.filter((command) => command === "delete_thread").length)).toBe(0);
@@ -3423,16 +3423,16 @@ test("keeps project selection in sync and removes groups without deleting conver
     await page.getByRole("tab", { name: "项目" }).click();
     const restoredProjectList = page.getByRole("navigation", { name: "项目列表" });
     await expect(restoredProjectList.locator(".project-group")).toHaveCount(1);
-    await expect(restoredProjectList.getByText("k-coder", { exact: true })).toHaveCount(0);
+    await expect(restoredProjectList.getByText("KCode", { exact: true })).toHaveCount(0);
     await page.screenshot({ path: testInfo.outputPath("project-group-deleted.png"), fullPage: true });
 
-    await composer.getByRole("button", { name: "当前项目 k-coder" }).click();
+    await composer.getByRole("button", { name: "当前项目 KCode" }).click();
     const activeProjectOption = page.getByRole("dialog", { name: "选择项目" })
-      .getByRole("option", { name: /k-coder/ });
+      .getByRole("option", { name: /KCode/ });
     await expect(activeProjectOption).toHaveAttribute("aria-selected", "true");
     await activeProjectOption.click();
     await expect(restoredProjectList.locator(".project-group")).toHaveCount(2);
-    await expect(restoredProjectList.getByText("k-coder", { exact: true })).toBeVisible();
+    await expect(restoredProjectList.getByText("KCode", { exact: true })).toBeVisible();
     await expect.poll(() => page.evaluate(() => JSON.parse(
       localStorage.getItem("kcoder_hidden_project_groups") ?? "[]",
     ))).toEqual([]);
@@ -6256,12 +6256,12 @@ test("focuses only the clicked subagent and scopes the list to its conversation"
     const threads = ["thread-1", "thread-2", "thread-empty"].map((id, index) => ({
       schemaVersion: 1, id, title: ["Phase 6 workbench", "Parallel conversation", "Empty conversation"][index],
       createdAtMs: index + 1, updatedAtMs: index + 1, archived: false,
-      inProject: true, workspacePath: "D:\\code\\k-coder",
+      inProject: true, workspacePath: "D:\\code\\KCode",
     }));
     const agents = ["agent-1", "agent-2", "agent-old"].map((id, index) => ({
       schemaVersion: 1, id, parentAgentId: null, parentThreadId: index === 2 ? "thread-2" : "thread-1",
       threadId: `thread-${id}`, label: ["检查后端", "检查文档", "历史任务"][index], task: `任务 ${id}`,
-      state: "running", depth: 1, workspaceRoot: "D:\\code\\k-coder", capabilities: ["read_file"],
+      state: "running", depth: 1, workspaceRoot: "D:\\code\\KCode", capabilities: ["read_file"],
       tokenBudget: null, tokensUsed: 420, timeoutMs: 600000, createdAtMs: index + 2,
       updatedAtMs: index + 2, summary: null, error: null, turnCount: 1,
     }));
@@ -6358,7 +6358,7 @@ test("shows every queued subagent wait before serial execution reaches it", asyn
           task: "分析文档结构",
           state: "running",
           depth: 1,
-          workspaceRoot: "D:\\code\\k-coder",
+          workspaceRoot: "D:\\code\\KCode",
           capabilities: ["list_directory", "read_file"],
           tokenBudget: null,
           tokensUsed: 0,
@@ -6442,7 +6442,7 @@ test("batch subagent wait shows all targets and distinguishes timeout from task 
     localStorage.setItem("kcoder_e2e_subagents", JSON.stringify([1, 2, 3, 4].map(n => ({
       schemaVersion: 1, id: `batch-${n}`, parentAgentId: null, parentThreadId: "thread-1",
       threadId: `child-batch-${n}`, label: `批量任务${n}`, task: "检查文档", state: "running", depth: 1,
-      workspaceRoot: "D:\\code\\k-coder", capabilities: ["read_file"], tokenBudget: null,
+      workspaceRoot: "D:\\code\\KCode", capabilities: ["read_file"], tokenBudget: null,
       tokensUsed: 0, timeoutMs: 600000, createdAtMs: n, updatedAtMs: 30000, summary: null, error: null,
     }))));
   });
@@ -6530,7 +6530,7 @@ test("shows recovered and live context-window progress in the composer", async (
         updatedAtMs: 2,
         archived: false,
         inProject: true,
-        workspacePath: "D:\\code\\k-coder",
+        workspacePath: "D:\\code\\KCode",
       },
       messages: [],
       messageTurnIds: {},
@@ -7321,8 +7321,8 @@ test("reports a successful commit instead of leaving the staged hint behind", as
 test("hides project-bound sessions from the plain conversation list", async ({ page }, testInfo) => {
   test.skip(testInfo.project.name === "narrow", "窄屏隐藏侧边栏，项目会话分组只在桌面侧边栏展示");
   await page.addInitScript(() => {
-    localStorage.setItem("kcoder_thread_project_map", JSON.stringify({ "thread-1": "D:\\code\\k-coder" }));
-    localStorage.setItem("kcoder_known_projects", JSON.stringify(["D:\\code\\k-coder"]));
+    localStorage.setItem("kcoder_thread_project_map", JSON.stringify({ "thread-1": "D:\\code\\KCode" }));
+    localStorage.setItem("kcoder_known_projects", JSON.stringify(["D:\\code\\KCode"]));
   });
   await page.goto("/");
 
@@ -7335,7 +7335,7 @@ test("hides project-bound sessions from the plain conversation list", async ({ p
   // 同一会话仍在"项目"tab 的项目分组中展示
   await page.getByRole("tab", { name: "项目" }).click();
   const projectList = page.getByRole("navigation", { name: "项目列表" });
-  await expect(projectList.getByText("k-coder", { exact: true })).toBeVisible();
+  await expect(projectList.getByText("KCode", { exact: true })).toBeVisible();
   await expect(projectList.locator(".project-group-count")).toHaveText("1");
   await projectList.getByRole("button", { name: "展开项目" }).click();
   await expect(projectList.getByText("Phase 6 workbench", { exact: true })).toBeVisible();
@@ -7351,22 +7351,22 @@ test("hides project-bound sessions from the plain conversation list", async ({ p
 test("switches to the project workspace before creating a project session", async ({ page }, testInfo) => {
   test.skip(testInfo.project.name === "narrow", "窄屏隐藏项目侧边栏");
   await page.addInitScript(() => {
-    localStorage.setItem("kcoder_thread_project_map", JSON.stringify({ "thread-1": "D:\\code\\k-coder" }));
-    localStorage.setItem("kcoder_known_projects", JSON.stringify(["D:\\code\\k-coder"]));
+    localStorage.setItem("kcoder_thread_project_map", JSON.stringify({ "thread-1": "D:\\code\\KCode" }));
+    localStorage.setItem("kcoder_known_projects", JSON.stringify(["D:\\code\\KCode"]));
     localStorage.setItem("kcoder_e2e_workspace_path", "D:\\code\\codex");
   });
   await page.goto("/");
 
   await expect.poll(() => page.evaluate(() =>
     (window as unknown as { __invocationArgs: Record<string, unknown> }).__invocationArgs.switch_workspace
-  )).toEqual({ path: "D:\\code\\k-coder", trusted: true });
+  )).toEqual({ path: "D:\\code\\KCode", trusted: true });
 
   await page.evaluate(() => {
     localStorage.setItem("kcoder_e2e_workspace_path", "D:\\code\\codex");
     (window as unknown as { __invoked: string[] }).__invoked.length = 0;
   });
   await page.getByRole("tab", { name: "项目" }).click();
-  const project = page.locator(".project-group").filter({ hasText: "k-coder" });
+  const project = page.locator(".project-group").filter({ hasText: "KCode" });
   await project.getByRole("button", { name: "在项目中新建会话" }).click();
 
   await expect.poll(() => page.evaluate(() =>
@@ -7377,7 +7377,7 @@ test("switches to the project workspace before creating a project session", asyn
   expect(calls.indexOf("create_thread")).toBeGreaterThan(calls.indexOf("switch_workspace"));
   await expect.poll(() => page.evaluate(() =>
     (window as unknown as { __invocationArgs: Record<string, unknown> }).__invocationArgs.switch_workspace
-  )).toEqual({ path: "D:\\code\\k-coder", trusted: true });
+  )).toEqual({ path: "D:\\code\\KCode", trusted: true });
 });
 
 test("hydrates the unified thread item page and loads older turns", async ({ page }) => {
@@ -7430,7 +7430,7 @@ test("hydrates the unified thread item page and loads older turns", async ({ pag
       createdAtMs: 1,
       updatedAtMs: 300,
       archived: false,
-      workspacePath: "D:\\code\\k-coder",
+      workspacePath: "D:\\code\\KCode",
     };
     localStorage.setItem("kcoder_e2e_thread_history", JSON.stringify({
       schemaVersion: 1,
@@ -7506,7 +7506,7 @@ test("keeps line breaks in a restored user message", async ({ page }, testInfo) 
         createdAtMs: 1,
         updatedAtMs: 300,
         archived: false,
-        workspacePath: "D:\\code\\k-coder",
+        workspacePath: "D:\\code\\KCode",
       },
       lastTurn: { turnId: "turn-breaks", state: "completed", error: null },
       todos: [],
@@ -7555,7 +7555,7 @@ test("renders a recovered assistant item only once when its turn comes from the 
         createdAtMs: 1,
         updatedAtMs: 4,
         archived: false,
-        workspacePath: "D:\\code\\k-coder",
+        workspacePath: "D:\\code\\KCode",
       },
       lastTurn: { turnId, state: "completed", error: null },
       todos: [],
@@ -7661,7 +7661,7 @@ test("restores a steered turn around the user guidance boundary", async ({ page 
         createdAtMs: 1,
         updatedAtMs: 6,
         archived: false,
-        workspacePath: "D:\\code\\k-coder",
+        workspacePath: "D:\\code\\KCode",
       },
       lastTurn: { turnId, state: "completed", error: null },
       todos: [],
@@ -8245,7 +8245,7 @@ test("keeps workspace terminal input ordered and preserves the session across ta
     localStorage.setItem("kcoder_e2e_pty_write_delay_ms", "25");
     localStorage.setItem(
       "kcoder_e2e_pty_output",
-      "\u001b[34mPS D:\\code\\Nick\\k-coder>\u001b[0m pnpm tauri dev\r\nReady\r\nPS D:\\code\\Nick\\k-coder> ",
+      "\u001b[34mPS D:\\code\\Nick\\KCode>\u001b[0m pnpm tauri dev\r\nReady\r\nPS D:\\code\\Nick\\KCode> ",
     );
   });
   await page.goto("/");
@@ -8434,7 +8434,7 @@ test("rate limit waiting and all child states are visible with only one wait cal
   await page.evaluate(() => {
     const bridge = window as unknown as { __emitAgentEvent: (event: unknown) => void; __emitTauriEvent: (name: string, event: unknown) => void };
     const child = { schemaVersion: 1, parentAgentId: null, parentThreadId: "thread-1", state: "running", depth: 1,
-      workspaceRoot: "D:\\code\\k-coder", capabilities: ["read_file"], tokenBudget: null, tokensUsed: 0,
+      workspaceRoot: "D:\\code\\KCode", capabilities: ["read_file"], tokenBudget: null, tokensUsed: 0,
       timeoutMs: 600000, summary: null, error: null, turnCount: 1, task: "检查文档" };
     bridge.__emitTauriEvent("subagent-event", { ...child, id: "agent-1", threadId: "child-1", label: "项目文档", createdAtMs: 1, updatedAtMs: 10 });
     bridge.__emitTauriEvent("subagent-event", { ...child, id: "agent-2", threadId: "child-2", label: "架构文档", createdAtMs: 2, updatedAtMs: 10, retryAtMs: Date.now() + 60000 });
@@ -8474,7 +8474,7 @@ test("rate limit waiting and all child states are visible with only one wait cal
   await page.evaluate(() => {
     const bridge = window as unknown as { __emitAgentEvent: (event: unknown) => void; __emitTauriEvent: (name: string, event: unknown) => void };
     bridge.__emitAgentEvent({ schemaVersion: 7, threadId: "thread-1", turnId: "quota-turn", phase: "exploring", type: "activity_status_changed", status: "thinking" });
-    bridge.__emitTauriEvent("subagent-event", { schemaVersion: 1, id: "agent-2", parentAgentId: null, parentThreadId: "thread-1", threadId: "child-2", label: "架构文档", task: "检查文档", state: "failed", depth: 1, workspaceRoot: "D:\\code\\k-coder", capabilities: ["read_file"], tokenBudget: null, tokensUsed: 0, timeoutMs: 600000, createdAtMs: 2, updatedAtMs: 20, summary: null, error: "provider returned HTTP 429", turnCount: 1 });
+    bridge.__emitTauriEvent("subagent-event", { schemaVersion: 1, id: "agent-2", parentAgentId: null, parentThreadId: "thread-1", threadId: "child-2", label: "架构文档", task: "检查文档", state: "failed", depth: 1, workspaceRoot: "D:\\code\\KCode", capabilities: ["read_file"], tokenBudget: null, tokensUsed: 0, timeoutMs: 600000, createdAtMs: 2, updatedAtMs: 20, summary: null, error: "provider returned HTTP 429", turnCount: 1 });
   });
   await expect(page.locator(".turn-execution--live > summary > .turn-disclosure-title").last()).not.toContainText("上游返回 429");
   await expect(roundSummary).toContainText("架构文档失败");
@@ -8486,13 +8486,13 @@ test("keeps subagent status inside the round that delegated it", async ({ page }
   await page.addInitScript(() => {
     localStorage.setItem("kcoder_e2e_subagents", JSON.stringify([{
       schemaVersion: 1, id: "agent-round-one", parentAgentId: null, parentThreadId: "thread-1", threadId: "child-round-one",
-      label: "变更审查", task: "检查文档", state: "failed", depth: 1, workspaceRoot: "D:\\code\\k-coder",
+      label: "变更审查", task: "检查文档", state: "failed", depth: 1, workspaceRoot: "D:\\code\\KCode",
       capabilities: ["read_file"], tokenBudget: null, tokensUsed: 0, timeoutMs: 600000,
       createdAtMs: 3, updatedAtMs: 9, summary: null, error: "provider unavailable", turnCount: 1,
     }]));
     localStorage.setItem("kcoder_e2e_thread_detail", JSON.stringify({
       schemaVersion: 1,
-      summary: { schemaVersion: 1, id: "thread-1", title: "Phase 6 workbench", createdAtMs: 1, updatedAtMs: 5, archived: false, inProject: true, workspacePath: "D:\\code\\k-coder" },
+      summary: { schemaVersion: 1, id: "thread-1", title: "Phase 6 workbench", createdAtMs: 1, updatedAtMs: 5, archived: false, inProject: true, workspacePath: "D:\\code\\KCode" },
       messages: [
         { schemaVersion: 1, id: "round-one-user", role: "user", content: [{ type: "text", text: "第一轮：请委派检查" }], createdAtMs: 1 },
         { schemaVersion: 1, id: "round-one-answer", role: "assistant", content: [{ type: "text", text: "第一轮回复：已委派检查。" }], createdAtMs: 2 },
@@ -8541,7 +8541,7 @@ test("exhausted subagent budget disables resume in detail and list while ordinar
         error: "provider unavailable" },
     ].map((child, index) => ({
       schemaVersion: 1, parentAgentId: null, parentThreadId: "thread-1", threadId: `budget-thread-${index}`,
-      task: "检查文档", state: "failed", depth: 1, workspaceRoot: "D:\\code\\k-coder", capabilities: ["read_file"],
+      task: "检查文档", state: "failed", depth: 1, workspaceRoot: "D:\\code\\KCode", capabilities: ["read_file"],
       timeoutMs: 600000, createdAtMs: index + 1, updatedAtMs: index + 10, summary: null, turnCount: 1,
       ...child,
     }))));
@@ -8574,7 +8574,7 @@ test("shows direct subagent creation in a conversation without messages", async 
     localStorage.setItem("kcoder_e2e_subagents", "[]");
     localStorage.setItem("kcoder_e2e_thread_detail_by_id", JSON.stringify({ "thread-1": {
       schemaVersion: 1,
-      summary: { schemaVersion: 1, id: "thread-1", title: "Phase 6 workbench", createdAtMs: 1, updatedAtMs: 1, archived: false, inProject: true, workspacePath: "D:\\code\\k-coder" },
+      summary: { schemaVersion: 1, id: "thread-1", title: "Phase 6 workbench", createdAtMs: 1, updatedAtMs: 1, archived: false, inProject: true, workspacePath: "D:\\code\\KCode" },
       messages: [], messageTurnIds: {}, turnUserMessageIds: {}, lastTurn: null,
       toolActivities: [], turnTimeline: [], lastUsage: null, contextUsage: null, approvals: [], userInputs: [], changes: [], todos: [],
     } }));
@@ -8584,7 +8584,7 @@ test("shows direct subagent creation in a conversation without messages", async 
   await page.evaluate(() => {
     (window as unknown as { __emitTauriEvent: (name: string, payload: unknown) => void }).__emitTauriEvent("subagent-event", {
       schemaVersion: 1, id: "direct-child", parentAgentId: null, parentThreadId: "thread-1", threadId: "child-thread",
-      label: "直接创建的任务", task: "检查文档", state: "running", depth: 1, workspaceRoot: "D:\\code\\k-coder", capabilities: [],
+      label: "直接创建的任务", task: "检查文档", state: "running", depth: 1, workspaceRoot: "D:\\code\\KCode", capabilities: [],
       tokenBudget: null, tokensUsed: 0, timeoutMs: 600000, createdAtMs: 2, updatedAtMs: 2, summary: null, error: null, turnCount: 0,
     });
   });
@@ -8748,7 +8748,7 @@ test("previews markdown data, remote, workspace and browser artifact images safe
       `![内嵌图片](${png})`,
       "![网络图片](https://images.example/test.png)",
       "![本地图片](docs/example.png)",
-      "![绝对路径](<D:/code/k-coder/docs/example.png>)",
+      "![绝对路径](<D:/code/KCode/docs/example.png>)",
       "1750000000000-0123456789abcdef.png",
       "![丢失图片](docs/missing.png)",
       "![危险图片](javascript:alert(1))",
@@ -8775,7 +8775,7 @@ test("previews markdown data, remote, workspace and browser artifact images safe
   }
   expect(await page.evaluate(() => Array.from(new Map((window as any).__imageReads.map((read: unknown) => [JSON.stringify(read), read])).values()))).toEqual([
     { command: "read_message_image", threadId: "thread-1", path: "docs/example.png" },
-    { command: "read_message_image", threadId: "thread-1", path: "D:/code/k-coder/docs/example.png" },
+    { command: "read_message_image", threadId: "thread-1", path: "D:/code/KCode/docs/example.png" },
     { command: "read_browser_artifact", name: "1750000000000-0123456789abcdef.png" },
     { command: "read_message_image", threadId: "thread-1", path: "docs/missing.png" },
   ]);
@@ -8785,7 +8785,7 @@ async function installRuntimeLogFixture(page: import('@playwright/test').Page) {
   await page.evaluate(() => {
     const internals = (window as unknown as { __TAURI_INTERNALS__: { invoke: (command: string, args?: Record<string, unknown>) => Promise<unknown> } }).__TAURI_INTERNALS__;
     const original = internals.invoke;
-    const defaultDirectory = 'C:/Users/test/AppData/Roaming/com.kcoder.app/runtime-data/logs';
+    const defaultDirectory = 'C:/Users/test/AppData/Roaming/com.kcode.app/runtime-data/logs';
     const state = { clearCount: 0, failClear: false, cleared: false, readCount: 0, searchQueries: [] as string[], directory: defaultDirectory, customDirectory: null as string | null, cancelChoose: false, failChoose: false, chooseCount: 0, resetCount: 0, clearDirectory: '' };
     const storage = () => ({ directory: state.directory, filePath: `${state.directory}/runtime.jsonl`, defaultDirectory, customDirectory: state.customDirectory, warning: null });
     Object.assign(window, { runtimeLogTest: state });

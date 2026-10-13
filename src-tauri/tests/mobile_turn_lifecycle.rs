@@ -17,22 +17,20 @@ use std::pin::Pin;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use k_coder_lib::agent::{AgentRuntime, EventPublisher, RunTurnRequest};
-use k_coder_lib::app_state::AppState;
-use k_coder_lib::mobile::MobileService;
-use k_coder_lib::mobile::events::{OutboundQueue, QueueMessage};
-use k_coder_lib::mobile::host::GatewayHost;
-use k_coder_lib::mobile::protocol::{
-    MOBILE_PROTOCOL_VERSION, MobileError, RpcRequest, RpcResponse,
-};
-use k_coder_lib::mobile::rpc::{GatewayContext, RpcSession, map_state_error};
-use k_coder_lib::protocol::{
+use kcode_lib::agent::{AgentRuntime, EventPublisher, RunTurnRequest};
+use kcode_lib::app_state::AppState;
+use kcode_lib::mobile::MobileService;
+use kcode_lib::mobile::events::{OutboundQueue, QueueMessage};
+use kcode_lib::mobile::host::GatewayHost;
+use kcode_lib::mobile::protocol::{MOBILE_PROTOCOL_VERSION, MobileError, RpcRequest, RpcResponse};
+use kcode_lib::mobile::rpc::{GatewayContext, RpcSession, map_state_error};
+use kcode_lib::protocol::{
     AgentEventEnvelope, ImageAttachment, PROTOCOL_VERSION, ToolCall, ToolDefinition, ToolResult,
     ToolRisk, TurnHandle, TurnState,
 };
-use k_coder_lib::providers::testing::FakeProvider;
-use k_coder_lib::providers::{CredentialError, CredentialStore, Provider, ProviderEvent};
-use k_coder_lib::tools::{ToolContext, ToolError, ToolHandler, ToolRegistry};
+use kcode_lib::providers::testing::FakeProvider;
+use kcode_lib::providers::{CredentialError, CredentialStore, Provider, ProviderEvent};
+use kcode_lib::tools::{ToolContext, ToolError, ToolHandler, ToolRegistry};
 use serde_json::{Value, json};
 use tauri::Manager;
 use tauri::test::{MockRuntime, mock_builder, mock_context, noop_assets};
@@ -282,7 +280,7 @@ impl Harness {
                 "initialize",
                 json!({
                     "protocolVersion": MOBILE_PROTOCOL_VERSION,
-                    "client": { "name": "k-coder-mobile", "version": "0.1" },
+                    "client": { "name": "KCode-mobile", "version": "0.1" },
                     "deviceId": self.device_id,
                     "deviceSecret": self.device_secret,
                 }),
@@ -304,7 +302,7 @@ impl Harness {
     }
 
     async fn dispatch(&self, id: Option<u64>, method: &str, params: Value) -> Option<RpcResponse> {
-        k_coder_lib::mobile::rpc::dispatch(
+        kcode_lib::mobile::rpc::dispatch(
             &self.context,
             &self.session,
             RpcRequest {

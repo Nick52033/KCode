@@ -607,7 +607,7 @@ mod tests {
     #[test]
     fn deterministic_rewrite_keeps_the_original_first_and_adds_only_host_context() {
         let hints = RewriteHints {
-            project_name: Some("k-coder".into()),
+            project_name: Some("KCode".into()),
             current_file: Some("src/persistence.rs".into()),
             recent_entities: vec!["memory_repository".into()],
         };
@@ -621,7 +621,7 @@ mod tests {
             MAX_REWRITTEN_QUERIES + 1,
             "project, entity and file fill the bounded rewrite list: {rewrites:?}"
         );
-        assert!(rewrites.iter().any(|value| value.contains("k-coder")));
+        assert!(rewrites.iter().any(|value| value.contains("KCode")));
         assert!(
             rewrites
                 .iter()
@@ -643,12 +643,12 @@ mod tests {
     #[test]
     fn deterministic_rewrite_never_repeats_context_already_in_the_query() {
         let hints = RewriteHints {
-            project_name: Some("k-coder".into()),
+            project_name: Some("KCode".into()),
             current_file: None,
-            recent_entities: vec!["k-coder".into()],
+            recent_entities: vec!["KCode".into()],
         };
-        let rewrites = deterministic_rewrite("k-coder 的 schema", &hints);
-        assert_eq!(rewrites, vec!["k-coder 的 schema".to_owned()]);
+        let rewrites = deterministic_rewrite("KCode 的 schema", &hints);
+        assert_eq!(rewrites, vec!["KCode 的 schema".to_owned()]);
     }
 
     #[test]

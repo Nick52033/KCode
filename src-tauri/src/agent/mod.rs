@@ -109,7 +109,7 @@ pub const DEFAULT_SOFT_TURN_TOTAL_TOKENS: u64 = 15_000_000;
 pub const DEFAULT_SOFT_TURN_DURATION_MS: Option<u64> = None;
 /// A hard cumulative cap prevents repeated continuation approvals from turning one
 /// Turn into an unbounded model/tool loop. ZCode 的普通 Turn 不设调用次数硬上限，
-/// k-Coder 保留该背扑但放宽到 10 个软额度段；上下文自动压缩、无变化快照检测和
+/// KCode 保留该背扑但放宽到 10 个软额度段；上下文自动压缩、无变化快照检测和
 /// 跨软段累计的无实质进展熔断共同限制循环。
 pub const DEFAULT_HARD_TURN_PROVIDER_CALLS: u32 = 3_000;
 

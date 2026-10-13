@@ -365,6 +365,7 @@ function withoutPendingRetry(pendingRetries: Record<string, number>, threadId: s
   return next;
 }
 
+// 旧版 k-coder 的 localStorage 键：一次性迁移读取后即删除，键名必须保持原样。
 const LEGACY_PROVIDER_STORAGE_KEY = "k-coder-providers";
 
 // 与后端新会话默认标题保持一致：标题仍是该值时才有必要刷新会话列表。

@@ -1,6 +1,6 @@
-# k-Coder
+# KCode
 
-k-Coder 是一个使用 Tauri、Rust、React 和 TypeScript 构建的本地优先编程智能体桌面应用。
+KCode 是一个使用 Tauri、Rust、React 和 TypeScript 构建的本地优先编程智能体桌面应用。
 
 项目会先实现一个小型、可测试的智能体运行时，再按受控阶段逐步发展成成熟的编程智能体工作台。完整开发顺序和验收门槛见 [开发路线图](docs/sys/开发路线图.md)。
 

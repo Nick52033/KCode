@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
-use k_coder_lib::app_state::AppState;
-use k_coder_lib::commands;
-use k_coder_lib::providers::{CredentialError, CredentialStore};
+use kcode_lib::app_state::AppState;
+use kcode_lib::commands;
+use kcode_lib::providers::{CredentialError, CredentialStore};
 use serde_json::{Value, json};
 use tauri::ipc::{CallbackFn, InvokeBody};
 use tauri::test::{

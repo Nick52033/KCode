@@ -12,7 +12,7 @@
     const day = String(date.getDate()).padStart(2, "0");
     return `${year}-${month}-${day}`;
   };
-  const threadFixture = { schemaVersion: 1, id: "thread-1", title: "Phase 6 workbench", createdAtMs: 1, updatedAtMs: 2, archived: false, inProject: true, workspacePath: "D:\\code\\k-coder" };
+  const threadFixture = { schemaVersion: 1, id: "thread-1", title: "Phase 6 workbench", createdAtMs: 1, updatedAtMs: 2, archived: false, inProject: true, workspacePath: "D:\\code\\KCode" };
   const threadOverride = localStorage.getItem("kcoder_e2e_thread_override");
   const thread = threadOverride ? { ...threadFixture, ...JSON.parse(threadOverride) } : threadFixture;
   const secondThread = { schemaVersion: 1, id: "thread-2", title: "Parallel conversation", createdAtMs: 3, updatedAtMs: 3, archived: false };
@@ -144,9 +144,9 @@
   let approvalMode = "ask";
   let reasoningEffort = "medium";
   let workspaceState = {
-    current: { id: "project-1", name: "k-coder", path: "D:\\code\\k-coder", trusted: true, lastOpenedAtMs: 2 },
+    current: { id: "project-1", name: "KCode", path: "D:\\code\\KCode", trusted: true, lastOpenedAtMs: 2 },
     recent: [
-      { id: "project-1", name: "k-coder", path: "D:\\code\\k-coder", trusted: true, lastOpenedAtMs: 2 },
+      { id: "project-1", name: "KCode", path: "D:\\code\\KCode", trusted: true, lastOpenedAtMs: 2 },
       { id: "project-2", name: "paypro-platform-be", path: "D:\\code\\paypro-platform-be", trusted: true, lastOpenedAtMs: 1 }
     ]
   };
@@ -186,16 +186,16 @@
   const extensionOverview = {
     schemaVersion: 1,
     configPaths: [
-      "C:\\Users\\demo\\AppData\\Local\\k-coder\\runtime-data\\extensions.json",
-      "C:\\Users\\demo\\AppData\\Local\\k-coder\\runtime-data\\mcp.json",
-      "D:\\code\\k-coder\\.k-coder\\extensions.json",
-      "D:\\code\\k-coder\\.k-coder\\mcp.json"
+      "C:\\Users\\demo\\AppData\\Local\\KCode\\runtime-data\\extensions.json",
+      "C:\\Users\\demo\\AppData\\Local\\KCode\\runtime-data\\mcp.json",
+      "D:\\code\\KCode\\.kcode\\extensions.json",
+      "D:\\code\\KCode\\.kcode\\mcp.json"
     ],
-    instructions: [{ path: "D:\\code\\k-coder\\AGENTS.md", scope: "project", priority: 200, bytes: 120 }],
+    instructions: [{ path: "D:\\code\\KCode\\AGENTS.md", scope: "project", priority: 200, bytes: 120 }],
     skills: [
-      { name: "workspace-review", description: "Built-in workspace review", path: "D:\\apps\\k-coder\\resources\\skills\\workspace-review\\SKILL.md", scope: "builtin", risk: "read", category: "quality_review", triggers: ["workspace review"], enabled: true, managedByRobot: false },
-      { name: "review", description: "Review code safely", path: "D:\\code\\k-coder\\.k-coder\\skills\\review\\SKILL.md", scope: "project", risk: "read", category: "quality_review", triggers: ["review"], enabled: true, managedByRobot: false },
-      { name: "requirements-intake", description: "Robot requirements intake", path: "D:\\apps\\k-coder\\resources\\skills\\robot-pack\\requirements-intake\\SKILL.md", scope: "builtin", risk: "read", category: "requirements_planning", triggers: ["requirements"], enabled: true, managedByRobot: true }
+      { name: "workspace-review", description: "Built-in workspace review", path: "D:\\apps\\KCode\\resources\\skills\\workspace-review\\SKILL.md", scope: "builtin", risk: "read", category: "quality_review", triggers: ["workspace review"], enabled: true, managedByRobot: false },
+      { name: "review", description: "Review code safely", path: "D:\\code\\KCode\\.kcode\\skills\\review\\SKILL.md", scope: "project", risk: "read", category: "quality_review", triggers: ["review"], enabled: true, managedByRobot: false },
+      { name: "requirements-intake", description: "Robot requirements intake", path: "D:\\apps\\KCode\\resources\\skills\\robot-pack\\requirements-intake\\SKILL.md", scope: "builtin", risk: "read", category: "requirements_planning", triggers: ["requirements"], enabled: true, managedByRobot: true }
     ],
     mcpServers: [{ id: "local", transport: "stdio", enabled: true, state: "ready", toolCount: 2, credentials: [], error: null }],
     hooks: [{ id: "guard", phase: "before", tool: "mcp__local__*", enabled: true }],
@@ -204,7 +204,7 @@
   };
   let userRules = {
     schemaVersion: 1,
-    path: "C:\\Users\\demo\\AppData\\Local\\k-coder\\runtime-data\\user-rules.json",
+    path: "C:\\Users\\demo\\AppData\\Local\\KCode\\runtime-data\\user-rules.json",
     rules: [{
       id: "11111111-1111-4111-8111-111111111111",
       title: "\u65B9\u6CD5\u6CE8\u91CA",
@@ -218,7 +218,7 @@
     schemaVersion: 2,
     global: {
       scope: "global",
-      path: "C:\\Users\\demo\\AppData\\Local\\k-coder\\runtime-data\\mcp.json",
+      path: "C:\\Users\\demo\\AppData\\Local\\KCode\\runtime-data\\mcp.json",
       exists: true,
       content: `${JSON.stringify({
         mcpServers: {
@@ -227,7 +227,7 @@
             enabled: true,
             timeoutMs: 3e4,
             command: "npx",
-            args: ["-y", "@modelcontextprotocol/server-filesystem", "D:\\code\\k-coder"],
+            args: ["-y", "@modelcontextprotocol/server-filesystem", "D:\\code\\KCode"],
             secret_env: {}
           }
         }
@@ -237,7 +237,7 @@
     },
     project: {
       scope: "project",
-      path: "D:\\code\\k-coder\\.k-coder\\mcp.json",
+      path: "D:\\code\\KCode\\.kcode\\mcp.json",
       exists: false,
       content: `${JSON.stringify({ mcpServers: {} }, null, 2)}
 `,
@@ -245,7 +245,7 @@
     },
     overview: extensionOverview
   };
-  const pluginRootPath = "D:\\code\\k-coder\\.k-coder\\plugins";
+  const pluginRootPath = "D:\\code\\KCode\\.kcode\\plugins";
   let pluginOverview = {
     schemaVersion: 1,
     rootPath: pluginRootPath,
@@ -410,7 +410,7 @@
         unifiedDiff: "--- a/src/App.css\n+++ b/src/App.css\n@@ -1 +1 @@\n-old\n+new\n"
       }]
     }] },
-    workspace_state: { current: { id: "project-1", name: "k-coder", path: "D:\\code\\k-coder", trusted: true, lastOpenedAtMs: 2 }, recent: [] },
+    workspace_state: { current: { id: "project-1", name: "KCode", path: "D:\\code\\KCode", trusted: true, lastOpenedAtMs: 2 }, recent: [] },
     list_workspace_directory: [
       { name: "src", path: "src", isDirectory: true, size: null, modifiedAtMs: 2 },
       { name: "README.md", path: "README.md", isDirectory: false, size: 120, modifiedAtMs: 2 }
@@ -419,8 +419,8 @@
       { name: "App.tsx", path: "src/App.tsx", isDirectory: false, size: 240, modifiedAtMs: 2 },
       { name: "README.md", path: "README.md", isDirectory: false, size: 120, modifiedAtMs: 2 }
     ],
-    preview_workspace_file: { path: "README.md", name: "README.md", language: "markdown", content: "# k-Coder", dataUrl: null, size: 9, truncated: false, editable: true, contentHash: "hash-readme" },
-    save_workspace_file: { path: "README.md", name: "README.md", language: "markdown", content: "# k-Coder\n\nEdited", dataUrl: null, size: 17, truncated: false, editable: true, contentHash: "hash-edited" },
+    preview_workspace_file: { path: "README.md", name: "README.md", language: "markdown", content: "# KCode", dataUrl: null, size: 9, truncated: false, editable: true, contentHash: "hash-readme" },
+    save_workspace_file: { path: "README.md", name: "README.md", language: "markdown", content: "# KCode\n\nEdited", dataUrl: null, size: 17, truncated: false, editable: true, contentHash: "hash-edited" },
     git_status: { isRepository: true, branch: "main", upstream: "origin/main", ahead: 0, behind: 0, files: [{ path: "src/App.tsx", indexStatus: " ", worktreeStatus: "M" }] },
     git_branches: { current: "main", branches: ["main", "feature/workbench"] },
     extension_overview: extensionOverview,
@@ -434,7 +434,7 @@
       task: "\u5206\u6790\u540E\u7AEF\u63A5\u53E3",
       state: "completed",
       depth: 1,
-      workspaceRoot: "D:\\code\\k-coder",
+      workspaceRoot: "D:\\code\\KCode",
       capabilities: ["list_directory", "read_file"],
       tokenBudget: null,
       tokensUsed: 420,
@@ -454,7 +454,7 @@
       task: "\u68C0\u67E5\u6D4B\u8BD5",
       state: "running",
       depth: 1,
-      workspaceRoot: "D:\\code\\k-coder",
+      workspaceRoot: "D:\\code\\KCode",
       capabilities: ["list_directory", "read_file"],
       tokenBudget: null,
       tokensUsed: 0,
@@ -981,7 +981,7 @@
         }
         if (command === "read_pty_output") {
           const cursor = Number(args?.cursor ?? 0);
-          const text = localStorage.getItem("kcoder_e2e_pty_output") ?? "PS D:\\code\\k-coder> ";
+          const text = localStorage.getItem("kcoder_e2e_pty_output") ?? "PS D:\\code\\KCode> ";
           const chunks = cursor === 0 ? [{ cursor: 0, text }] : [];
           return { chunks, nextCursor: cursor === 0 ? 1 : cursor, oldestCursor: 0, truncatedBeforeCursor: false };
         }

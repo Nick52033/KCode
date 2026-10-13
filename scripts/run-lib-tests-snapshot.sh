@@ -2,7 +2,7 @@
 # Runs the cargo lib-test binary from a *stable snapshot*.
 #
 # A second, concurrent cargo session in this repo repeatedly relinks
-# `target/debug/deps/k_coder_lib-<hash>.exe` in place. Running the file directly then loads a
+# `target/debug/deps/kcode_lib-<hash>.exe` in place. Running the file directly then loads a
 # half-written image and the Windows loader fails with STATUS_ENTRYPOINT_NOT_FOUND (Git Bash exit
 # 127). Copying is not enough either: the copy can catch the same half-written state.
 #
@@ -10,7 +10,7 @@
 # then run the requested filter. Retries a bounded number of times.
 set -u
 
-EXE="${KC_TEST_EXE:-src-tauri/target/debug/deps/k_coder_lib-34dce356d94490c0.exe}"
+EXE="${KC_TEST_EXE:-src-tauri/target/debug/deps/kcode_lib-34dce356d94490c0.exe}"
 SNAPSHOT="${KC_TEST_SNAPSHOT:-/tmp/kc-lib-test.exe}"
 ATTEMPTS="${KC_TEST_ATTEMPTS:-40}"
 

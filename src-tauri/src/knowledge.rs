@@ -1896,7 +1896,7 @@ impl KnowledgeService {
             &key,
             json!({
                 "model": EMBEDDING_MODEL,
-                "input": "k-coder embedding connection test",
+                "input": "KCode embedding connection test",
                 "encoding_format": EMBEDDING_ENCODING
             }),
             &CancellationToken::new(),
@@ -6177,7 +6177,7 @@ mod tests {
 
         let options = retrieval::SearchOptions {
             hints: retrieval::RewriteHints {
-                project_name: Some("k-coder".into()),
+                project_name: Some("KCode".into()),
                 current_file: Some("src-tauri/src/knowledge.rs".into()),
                 recent_entities: vec!["retrieval".into()],
             },

@@ -57,7 +57,7 @@ const fs = require('node:fs');
     const overview = await page.evaluate(async ({ ids, baseUrl }) => {
       const api = await import('/src/api/runtime.ts');
       const { invoke } = await import('/node_modules/@tauri-apps/api/core.js');
-      await invoke('switch_workspace', { path: 'D:/code/k-coder', trusted: true });
+      await invoke('switch_workspace', { path: 'D:/code/KCode', trusted: true });
       for (const id of ids) await api.setPluginEnabled(id, true);
       await api.saveBrowserSettings({ enabled: true, allowLocalhost: true });
       await api.setApprovalMode('full_access');

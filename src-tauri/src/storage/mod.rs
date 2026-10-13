@@ -3839,7 +3839,7 @@ mod tests {
         assert_eq!(migrated.title, "legacy");
         assert!(migrated.in_project);
         drop(repository);
-        fs::remove_file(directory.path().join("k-coder.db")).unwrap();
+        fs::remove_file(directory.path().join("kcode.db")).unwrap();
         let rebuilt = JsonlThreadRepository::new(directory.path()).unwrap();
         assert_eq!(rebuilt.list_threads().await.unwrap()[0].id, thread_id);
     }

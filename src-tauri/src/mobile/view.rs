@@ -674,19 +674,19 @@ mod tests {
             updated_at_ms: 5,
             archived: false,
             in_project: true,
-            workspace_path: Some("D:\\code\\k-coder".to_string()),
+            workspace_path: Some("D:\\code\\KCode".to_string()),
             model_selection: None,
         };
         let projected = MobileThreadSummary::from_summary(
             &summary,
-            Some("d:/code/k-coder".to_string()),
+            Some("d:/code/KCode".to_string()),
             Some("turn-9".to_string()),
             1,
             2,
         );
         assert!(projected.running);
         assert_eq!(projected.pending_approvals, 1);
-        assert_eq!(projected.project_key.as_deref(), Some("d:/code/k-coder"));
+        assert_eq!(projected.project_key.as_deref(), Some("d:/code/KCode"));
         let encoded = serde_json::to_string(&projected).unwrap();
         assert!(
             !encoded.contains("D:\\\\code"),
@@ -700,8 +700,8 @@ mod tests {
     fn project_key_is_not_the_workspace_path() {
         let project = MobileProject {
             id: "p1".to_string(),
-            name: "k-coder".to_string(),
-            key: crate::workbench::workspace_path_key(r"D:\code\Nick\k-coder"),
+            name: "KCode".to_string(),
+            key: crate::workbench::workspace_path_key(r"D:\code\Nick\KCode"),
             last_opened_at_ms: 7,
         };
 
@@ -712,7 +712,7 @@ mod tests {
         );
         assert!(!encoded.contains("Nick"), "key 不得携带父目录名: {encoded}");
         let decoded: serde_json::Value = serde_json::from_str(&encoded).unwrap();
-        assert_eq!(decoded["name"], "k-coder");
+        assert_eq!(decoded["name"], "KCode");
         assert!(decoded.get("path").is_none(), "项目视图不得下发 path 字段");
     }
 }

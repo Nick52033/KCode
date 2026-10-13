@@ -19,7 +19,7 @@ r"""KCode 桌面端运行时错误排查辅助脚本。
   runtime.jsonl  每条是 {level, timestampMs, event, fields{...}}
   sessions/*.jsonl 每条是 {type, createdAtMs, data{...}}（schemaVersion 11）
 
-日志位置：默认取 Windows 的 %APPDATA%\com.kcoder.app\runtime-data\。不同电脑路径不同，
+日志位置：默认取 Windows 的 %APPDATA%\com.kcode.app\runtime-data\。不同电脑路径不同，
 默认位置读不到时先向用户确认，再加 --runtime-root 或 --log-path 覆盖：
   python triage_runtime_errors.py errors --minutes 30 --runtime-root "D:\\runtime-data"
   python triage_runtime_errors.py classify --log-path "D:\\runtime-data\\logs\\runtime.jsonl"
@@ -363,7 +363,7 @@ def classify_record_with_observations(record: dict) -> tuple[dict, list[dict]]:
 
 RUNTIME_ROOT = os.path.join(
     os.environ.get("APPDATA", os.path.expanduser("~")),
-    "com.kcoder.app",
+    "com.kcode.app",
     "runtime-data",
 )
 LOG_PATH = os.path.join(RUNTIME_ROOT, "logs", "runtime.jsonl")

@@ -1033,7 +1033,7 @@ function FileActivityDetails({ details }: { details: FileActivityDetailsValue })
           <div className="turn-file-editor-frame" style={{ height: `${fileDetailEditorHeight(details.content)}px` }}>
             <ReadOnlyCodeEditor
               path={details.path || "Patch"}
-              modelPath={`k-coder-file-operation://detail/${encodeURIComponent(details.id)}`}
+              modelPath={`KCode-file-operation://detail/${encodeURIComponent(details.id)}`}
               language={details.kind === "patch" ? "diff" : fileLanguage(details.path)}
               value={details.content}
               readOnly
@@ -1061,7 +1061,7 @@ function ChangeFileView({ changeId, file }: { changeId: string; file: ChangeSet[
   const languagePath = file.destinationPath || file.path;
   const hasSnapshots = (file.operation === "add" || file.beforeContent !== null)
     && (file.operation === "delete" || file.afterContent !== null);
-  const modelRoot = `k-coder-change://snapshot/${encodeURIComponent(changeId)}/${encodeURIComponent(languagePath)}`;
+  const modelRoot = `KCode-change://snapshot/${encodeURIComponent(changeId)}/${encodeURIComponent(languagePath)}`;
 
   async function copyDiff() {
     try {

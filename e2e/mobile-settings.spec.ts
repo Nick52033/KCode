@@ -70,7 +70,7 @@ const THREAD = {
   updatedAtMs: 2,
   archived: false,
   inProject: true,
-  workspacePath: "D:\\code\\k-coder",
+  workspacePath: "D:\\code\\KCode",
 };
 
 const CATALOG = {
@@ -93,7 +93,7 @@ const CATALOG = {
 };
 
 const WORKSPACE = {
-  current: { id: "project-1", name: "k-coder", path: "D:\\code\\k-coder", trusted: true, lastOpenedAtMs: 2 },
+  current: { id: "project-1", name: "KCode", path: "D:\\code\\KCode", trusted: true, lastOpenedAtMs: 2 },
   recent: [],
 };
 

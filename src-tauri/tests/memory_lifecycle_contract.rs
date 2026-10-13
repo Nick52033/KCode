@@ -3,22 +3,22 @@ use std::io::Write;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use k_coder_lib::agent::EventPublisher;
-use k_coder_lib::app_state::AppState;
-use k_coder_lib::memory::capture::{
+use kcode_lib::agent::EventPublisher;
+use kcode_lib::app_state::AppState;
+use kcode_lib::memory::capture::{
     AUTO_EXTRACTION_CONSENT_VERSION, CAPTURE_TIMEOUT_SECS, CAPTURE_TOKEN_BUDGET,
     MemoryCaptureService, build_capture_summary, capture_outcome_is_parseable, capture_skip_reason,
     parse_capture_proposals,
 };
-use k_coder_lib::memory::{MemoryScope, MemoryScopeKind, MemorySettings};
-use k_coder_lib::persistence::ProjectionDb;
-use k_coder_lib::protocol::{AgentEventEnvelope, TokenUsage, TurnState};
-use k_coder_lib::providers::testing::FakeProvider;
-use k_coder_lib::providers::{
+use kcode_lib::memory::{MemoryScope, MemoryScopeKind, MemorySettings};
+use kcode_lib::persistence::ProjectionDb;
+use kcode_lib::protocol::{AgentEventEnvelope, TokenUsage, TurnState};
+use kcode_lib::providers::testing::FakeProvider;
+use kcode_lib::providers::{
     CredentialError, CredentialStore, ProviderError, ProviderEvent, ProviderKind,
     ProviderModelConfig, ProviderTransport, SaveProviderConfigRequest,
 };
-use k_coder_lib::storage::memory_capture_repository::{
+use kcode_lib::storage::memory_capture_repository::{
     CaptureCounts, CaptureJobStatus, MAX_CAPTURE_QUEUED_JOBS, MemoryCaptureJob,
     MemoryCaptureRepository,
 };

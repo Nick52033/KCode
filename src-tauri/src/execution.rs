@@ -1027,7 +1027,7 @@ fn wait_state(result: std::io::Result<std::process::ExitStatus>) -> CommandState
 /// 为什么不直接 `String::from_utf8_lossy`：子进程并不保证按 UTF-8 写。中文 Windows 上
 /// PowerShell 的原生报错走系统 ANSI 代码页（CP936/GBK），逐字节按 UTF-8 解会把每个汉字
 /// 换成一个 U+FFFD，原文（例如「在其上下文中，该请求的地址无效」）彻底读不出来，模型和
-/// 人都看不出这次失败的真实原因——`k-coder-runtime-error-triage` 的 B2 报的就是这个。
+/// 人都看不出这次失败的真实原因——`kcode-runtime-error-triage` 的 B2 报的就是这个。
 /// 因此这里先按严格 UTF-8 解，失败再按当前 ANSI 代码页解。
 ///
 /// 另外 stdout/stderr 按行读、PTY 按 4096 字节块读，多字节字符可能正巧被切在两段之间，
@@ -1692,8 +1692,8 @@ mod tests {
         // 内部 canonicalize 形式必须被还原成 user-facing 形式，
         // 才能让 PowerShell/cmd 提示符与 `cd %CD%` 输出保持整洁。
         assert_eq!(
-            strip_verbatim_prefix(Path::new(r"\\?\D:\code\k-coder")),
-            PathBuf::from(r"D:\code\k-coder"),
+            strip_verbatim_prefix(Path::new(r"\\?\D:\code\KCode")),
+            PathBuf::from(r"D:\code\KCode"),
         );
         assert_eq!(
             strip_verbatim_prefix(Path::new(r"\\?\UNC\server\share\repo")),
@@ -1701,12 +1701,12 @@ mod tests {
         );
         // 已经是 user-facing 形式时保持原样。
         assert_eq!(
-            strip_verbatim_prefix(Path::new(r"D:\code\k-coder")),
-            PathBuf::from(r"D:\code\k-coder"),
+            strip_verbatim_prefix(Path::new(r"D:\code\KCode")),
+            PathBuf::from(r"D:\code\KCode"),
         );
         assert_eq!(
-            strip_verbatim_prefix(Path::new("/tmp/k-coder")),
-            PathBuf::from("/tmp/k-coder"),
+            strip_verbatim_prefix(Path::new("/tmp/KCode")),
+            PathBuf::from("/tmp/KCode"),
         );
     }
 
@@ -1772,7 +1772,7 @@ mod tests {
 
     #[test]
     fn redaction_preserves_terminal_layout_and_control_sequences() {
-        let output = "\x1b[32mPS D:\\code\\k-coder>\x1b[0m  pnpm build\r\n\r\nnext\tline\r\n";
+        let output = "\x1b[32mPS D:\\code\\KCode>\x1b[0m  pnpm build\r\n\r\nnext\tline\r\n";
         assert_eq!(redact(output), output);
         assert_eq!(
             redact("API_KEY=secret\r\n  ok\tghp_example\r\n"),

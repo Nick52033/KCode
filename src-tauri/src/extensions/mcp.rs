@@ -52,7 +52,7 @@ impl OsMcpSecretStore {
 
     #[cfg(not(test))]
     fn entry(&self, server: &str, name: &str) -> Result<keyring::Entry, McpError> {
-        keyring::Entry::new("com.kcoder.app.mcp", &format!("{server}:{name}"))
+        keyring::Entry::new("com.kcode.app.mcp", &format!("{server}:{name}"))
             .map_err(|error| McpError::Secret(error.to_string()))
     }
 }
@@ -509,7 +509,7 @@ async fn initialize(
             json!({
                 "protocolVersion": MCP_PROTOCOL_VERSION,
                 "capabilities": {},
-                "clientInfo": { "name": "k-coder", "version": env!("CARGO_PKG_VERSION") }
+                "clientInfo": { "name": "KCode", "version": env!("CARGO_PKG_VERSION") }
             }),
             cancellation.clone(),
         )
@@ -1506,7 +1506,7 @@ mod tests {
             timeout_ms: 10_000,
             transport: McpTransportConfig::StreamableHttp {
                 url: format!("http://127.0.0.1:{}/mcp", port.trim()),
-                headers: HashMap::from([("X-Client-Name".into(), "k-coder-test".into())]),
+                headers: HashMap::from([("X-Client-Name".into(), "KCode-test".into())]),
                 secret_headers: HashMap::from([("Authorization".into(), "token".into())]),
             },
         };
