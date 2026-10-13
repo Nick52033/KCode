@@ -2,10 +2,29 @@ const GENERIC_REASONING_NOTE_PATTERN = /^(?:(?:planning|preparing|checking|revie
 const REASONING_INSIGHT_PATTERN = /(?:found|confirmed|because|therefore|however|mismatch|failed|failure|risk|requires?|needs?|发现|确认|原因|因此|由于|但是|不一致|失败|风险|需要)/i;
 const HAN_SCRIPT_PATTERN = /[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]/g;
 const LATIN_SCRIPT_PATTERN = /[a-z]/gi;
+const STEP_FUN_REASONING_ITEM_PREFIX = "step-reasoning-";
 
-export function isDisplayableReasoningSummary(summary: string) {
+export interface ReasoningSummaryDisplayOptions {
+  /** StepFun 的适配器已经把该项限定为公开思考摘要。 */
+  allowStepFun?: boolean;
+}
+
+/**
+ * StepFun 摘要项使用独立的后端命名空间，避免把其他 Provider 的私有
+ * reasoning_content 当成可展示内容。该前缀由 Step 适配器生成，前端只
+ * 用它选择展示规则，不把它当作供应商传入的权限字段。
+ */
+export function isStepFunReasoningItem(itemId: string) {
+  return itemId.startsWith(STEP_FUN_REASONING_ITEM_PREFIX);
+}
+
+export function isDisplayableReasoningSummary(
+  summary: string,
+  options: ReasoningSummaryDisplayOptions = {},
+) {
   const normalized = summary.replace(/\s+/g, " ").trim().replace(/^[#>*_`\-\s]+/, "");
   if (!normalized) return false;
+  if (options.allowStepFun) return true;
   if (!usesChineseSummaryLanguage(normalized)) return false;
   if (summary.includes("\n") || normalized.length > 160 || REASONING_INSIGHT_PATTERN.test(normalized)) return true;
   return !GENERIC_REASONING_NOTE_PATTERN.test(normalized);
@@ -15,8 +34,12 @@ export function isDisplayableReasoningSummary(summary: string) {
  * Keep the last summary that was safe to show while a provider continues streaming.
  * A later generic/action-only suffix must not make an already visible row disappear.
  */
-export function selectVisibleReasoningSummary(summary: string, previousVisibleSummary?: string) {
-  return isDisplayableReasoningSummary(summary) ? summary : previousVisibleSummary;
+export function selectVisibleReasoningSummary(
+  summary: string,
+  previousVisibleSummary?: string,
+  options: ReasoningSummaryDisplayOptions = {},
+) {
+  return isDisplayableReasoningSummary(summary, options) ? summary : previousVisibleSummary;
 }
 
 function usesChineseSummaryLanguage(summary: string) {

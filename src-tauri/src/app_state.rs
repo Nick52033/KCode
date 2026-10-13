@@ -1531,6 +1531,18 @@ impl AppState {
             ProviderTransport::DeepSeekChatCompletions => {
                 Arc::new(DeepSeekChatCompletionsProvider::new(config, api_key)?)
             }
+            // Step-Code registers `step-5-preview` as an OpenAI Chat
+            // Completions model.  Older KCode configurations could save the
+            // same endpoint as `open_ai_responses`; Step's Responses route
+            // returns only private `reasoning_text` items (and no public
+            // summary), so using the generic Responses adapter makes the UI
+            // look as if it is only executing tools.  Reuse the Step dialect
+            // for both persisted transport values and call the endpoint that
+            // Step-Code actually uses.  The public configuration is left
+            // untouched so this is a backwards-compatible runtime migration.
+            ProviderTransport::OpenAiResponses if step_dialect(&config) => {
+                Arc::new(StepChatCompletionsProvider::new(config, api_key)?)
+            }
             ProviderTransport::OpenAiResponses => {
                 Arc::new(OpenAiResponsesProvider::new(config, api_key)?)
             }
@@ -2198,16 +2210,28 @@ fn deepseek_dialect(config: &ProviderConfig, model_id: &str) -> bool {
 
 /// Step Code's provider source confirms Step uses OpenAI Chat Completions,
 /// while tool rounds need the provider's private reasoning passback. Select
-/// that narrow behavior only for StepFun endpoints or explicitly named Step
-/// providers; unrelated compatible endpoints retain the standard dialect.
+/// that narrow behavior only for StepFun endpoints, explicitly named Step
+/// providers, or the stable Step model ID. The model ID check also covers a
+/// user-managed proxy whose provider name and host no longer contain
+/// `stepfun`. Both persisted chat and responses transport values are accepted:
+/// old KCode configs used the latter even though Step-Code uses the former.
 fn step_dialect(config: &ProviderConfig) -> bool {
-    if config.transport != ProviderTransport::OpenAiChatCompletions {
+    if !matches!(
+        config.transport,
+        ProviderTransport::OpenAiChatCompletions | ProviderTransport::OpenAiResponses
+    ) {
         return false;
     }
     let name = format!("{} {}", config.id, config.name).to_ascii_lowercase();
     if ["stepfun", "step fun", "阶跃星辰"]
         .iter()
         .any(|needle| name.contains(needle))
+    {
+        return true;
+    }
+    if config.id.trim().eq_ignore_ascii_case("step")
+        || config.name.trim().eq_ignore_ascii_case("step")
+        || is_step_model(&config.model)
     {
         return true;
     }
@@ -2219,6 +2243,21 @@ fn step_dialect(config: &ProviderConfig) -> bool {
                 || host.ends_with(".stepfun.com")
                 || host == "stepfun.ai"
                 || host.ends_with(".stepfun.ai")
+        })
+}
+
+/// Step's public model catalog uses IDs such as `step-5-preview` and
+/// `step-3.7-flash`. Require a numeric suffix so an unrelated model such as
+/// `step-up` is not silently sent through the Step protocol.
+fn is_step_model(model: &str) -> bool {
+    model
+        .to_ascii_lowercase()
+        .split(|character| matches!(character, '/' | ':'))
+        .any(|segment| {
+            segment
+                .strip_prefix("step-")
+                .and_then(|suffix| suffix.chars().next())
+                .is_some_and(|first| first.is_ascii_digit())
         })
 }
 
@@ -2397,9 +2436,16 @@ mod tests {
     use crate::agent::mailbox::{MailboxTurn, MailboxTurnKind};
     use crate::policy::PolicyDecision;
     use crate::protocol::{
-        ApprovalRequest, ExpectedFileHash, ToolRisk, UserInputQuestion, UserInputRequest,
+        ApprovalRequest, ExpectedFileHash, MessageRole, PROTOCOL_VERSION, ToolRisk,
+        UserInputQuestion, UserInputRequest,
     };
-    use crate::providers::{ProviderKind, ProviderTransport, SaveProviderConfigRequest};
+    use crate::providers::{
+        ProviderKind, ProviderMessage, ProviderRequest, ProviderTransport,
+        SaveProviderConfigRequest,
+    };
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use tokio::net::TcpListener;
+    use tokio_util::sync::CancellationToken;
 
     #[derive(Default)]
     struct FakeCredentials {
@@ -2794,6 +2840,202 @@ mod tests {
                 "unexpected DeepSeek match: {model}"
             );
         }
+    }
+
+    #[test]
+    fn recognizes_step_routes_even_when_an_old_config_saved_responses_transport() {
+        fn config(
+            transport: ProviderTransport,
+            id: &str,
+            name: &str,
+            base_url: &str,
+            model: &str,
+        ) -> ProviderConfig {
+            SaveProviderConfigRequest {
+                id: id.into(),
+                kind: ProviderKind::OpenAiCompatible,
+                transport,
+                name: name.into(),
+                base_url: base_url.into(),
+                model: model.into(),
+                models: vec![crate::providers::ProviderModelConfig {
+                    id: model.into(),
+                    display_name: model.into(),
+                    context_window: 128_000,
+                    max_output_tokens: Some(8_192),
+                    supports_vision: false,
+                    fallback: false,
+                }],
+                endpoints: Vec::new(),
+                fallback_provider_ids: Vec::new(),
+                api_key: None,
+                activate: true,
+            }
+            .public_config()
+            .expect("test provider configuration should validate")
+        }
+
+        assert!(step_dialect(&config(
+            ProviderTransport::OpenAiResponses,
+            "step-provider",
+            "阶跃星辰",
+            "https://api.stepfun.com/step_plan/v1",
+            "step-5-preview",
+        )));
+        assert!(step_dialect(&config(
+            ProviderTransport::OpenAiResponses,
+            "custom-gateway",
+            "Internal gateway",
+            "https://proxy.example.com/v1",
+            "step-5-preview",
+        )));
+        assert!(step_dialect(&config(
+            ProviderTransport::OpenAiChatCompletions,
+            "step",
+            "Custom name",
+            "https://proxy.example.com/v1",
+            "private-model",
+        )));
+        assert!(!step_dialect(&config(
+            ProviderTransport::OpenAiResponses,
+            "custom-gateway",
+            "Internal gateway",
+            "https://proxy.example.com/v1",
+            "step-up",
+        )));
+        assert!(!step_dialect(&config(
+            ProviderTransport::OpenAiImageGenerations,
+            "step-provider",
+            "阶跃星辰",
+            "https://api.stepfun.com/step_plan/v1",
+            "step-5-preview",
+        )));
+    }
+
+    #[tokio::test]
+    async fn step_chat_and_legacy_responses_configs_use_chat_completions_path() {
+        let listener = TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("test server should bind");
+        let address = listener
+            .local_addr()
+            .expect("test server should have an address");
+        let server = tokio::spawn(async move {
+            let mut paths = Vec::new();
+            for _ in 0..2 {
+                let (mut stream, _) = listener.accept().await.expect("request should connect");
+                let mut request = Vec::new();
+                let header_end = loop {
+                    let mut chunk = [0_u8; 4096];
+                    let read = stream
+                        .read(&mut chunk)
+                        .await
+                        .expect("request headers should read");
+                    assert!(read > 0, "request ended before its headers");
+                    request.extend_from_slice(&chunk[..read]);
+                    if let Some(index) = request.windows(4).position(|window| window == b"\r\n\r\n")
+                    {
+                        break index + 4;
+                    }
+                };
+                let headers = String::from_utf8_lossy(&request[..header_end]).into_owned();
+                let content_length = headers
+                    .lines()
+                    .filter_map(|line| line.split_once(':'))
+                    .find_map(|(name, value)| {
+                        name.eq_ignore_ascii_case("content-length")
+                            .then(|| value.trim().parse::<usize>().expect("valid content length"))
+                    })
+                    .expect("request should include a content length");
+                while request.len() < header_end + content_length {
+                    let mut chunk = [0_u8; 4096];
+                    let read = stream
+                        .read(&mut chunk)
+                        .await
+                        .expect("request body should read");
+                    assert!(read > 0, "request ended before its body");
+                    request.extend_from_slice(&chunk[..read]);
+                }
+                let request_line = headers
+                    .lines()
+                    .next()
+                    .expect("request should include a request line");
+                paths.push(
+                    request_line
+                        .split_whitespace()
+                        .nth(1)
+                        .expect("request line should include a path")
+                        .to_string(),
+                );
+
+                let body = concat!(
+                    "data: {\"choices\":[{\"delta\":{\"content\":\"ok\"},",
+                    "\"finish_reason\":\"stop\"}]}\n\n",
+                    "data: [DONE]\n\n"
+                );
+                let response = format!(
+                    "HTTP/1.1 200 OK\r\ncontent-type: text/event-stream\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{}",
+                    body.len(),
+                    body
+                );
+                stream
+                    .write_all(response.as_bytes())
+                    .await
+                    .expect("response should write");
+            }
+            paths
+        });
+
+        let model = "step-5-preview";
+        for transport in [
+            ProviderTransport::OpenAiChatCompletions,
+            ProviderTransport::OpenAiResponses,
+        ] {
+            let config = SaveProviderConfigRequest {
+                id: "step-provider".into(),
+                kind: ProviderKind::OpenAiCompatible,
+                transport,
+                name: "阶跃星辰".into(),
+                base_url: format!("http://{address}/v1"),
+                model: model.into(),
+                models: vec![crate::providers::ProviderModelConfig {
+                    id: model.into(),
+                    display_name: model.into(),
+                    context_window: 128_000,
+                    max_output_tokens: Some(8_192),
+                    supports_vision: false,
+                    fallback: false,
+                }],
+                endpoints: Vec::new(),
+                fallback_provider_ids: Vec::new(),
+                api_key: None,
+                activate: true,
+            }
+            .public_config()
+            .expect("Step provider configuration should validate");
+            let provider = AppState::provider_for_config(config, "step-key".into())
+                .expect("Step configuration should build");
+            let request = ProviderRequest {
+                schema_version: PROTOCOL_VERSION,
+                model: model.into(),
+                reasoning_effort: ReasoningEffort::High,
+                messages: vec![ProviderMessage::Text {
+                    role: MessageRole::User,
+                    text: "检查状态".into(),
+                }],
+                tools: Vec::new(),
+                empty_response_attempts: 0,
+            };
+            let stream = provider
+                .stream(request, CancellationToken::new())
+                .await
+                .expect("Step provider should connect through Chat Completions");
+            drop(stream);
+        }
+        assert_eq!(
+            server.await.expect("test server should stop cleanly"),
+            ["/v1/chat/completions", "/v1/chat/completions"]
+        );
     }
 
     #[test]

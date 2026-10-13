@@ -483,6 +483,7 @@ function App() {
     resolvePendingApproval,
     resolvePendingUserInput,
     undoAppliedChange,
+    undoAppliedChanges,
     acceptAppliedChanges,
     saveProvider,
     activateProvider,
@@ -1519,9 +1520,8 @@ function App() {
       setReviewingChangeIds((previous) => new Set([...previous, ...reviewableIds]));
       try {
         // 变更按事件顺序进入列表；逆序撤销可通过同一文件多次写入时的哈希保护。
-        for (const change of [...reviewableChanges].reverse()) {
-          if (!await undoAppliedChange(change.id)) break;
-        }
+        // 单项冲突只保护该文件不被覆盖，不应阻止其他变更继续安全撤销。
+        await undoAppliedChanges([...reviewableChanges].reverse().map((change) => change.id));
       } finally {
         setReviewingChangeIds((previous) => {
           const next = new Set(previous);

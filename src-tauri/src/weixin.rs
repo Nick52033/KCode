@@ -5,6 +5,7 @@ use std::future::Future;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
+use base64::Engine;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -37,7 +38,7 @@ fn official_base(value: &str) -> Result<String, String> {
         || !valid_host
         || !url.username().is_empty()
         || url.password().is_some()
-        || url.port().is_some()
+        || has_explicit_port(value, &url)
         || !(url.path().is_empty() || url.path() == "/")
         || url.query().is_some()
         || url.fragment().is_some()
@@ -45,6 +46,75 @@ fn official_base(value: &str) -> Result<String, String> {
         return Err("微信接口地址不受信任".into());
     }
     Ok(url.to_string())
+}
+
+/// Reject an explicitly spelled-out port, including a scheme default such as
+/// `:443`. `Url::port` normalizes that away, so the raw authority has to be
+/// inspected to tell `https://host:443` from `https://host`.
+fn has_explicit_port(value: &str, url: &url::Url) -> bool {
+    if url.port().is_some() {
+        return true;
+    }
+    let authority = value
+        .splitn(2, "://")
+        .nth(1)
+        .unwrap_or(value)
+        .split(['/', '?', '#'])
+        .next()
+        .unwrap_or_default();
+    let host = authority.rsplit('@').next().unwrap_or(authority);
+    !host.starts_with('[') && host.contains(':')
+}
+
+fn message_id(message: &Value) -> Option<String> {
+    ["message_id", "msg_id", "client_id"]
+        .iter()
+        .filter_map(|field| message.get(*field))
+        .find_map(|value| match value {
+            Value::String(id) if !id.is_empty() => Some(id.clone()),
+            Value::Number(id) => Some(id.to_string()),
+            _ => None,
+        })
+}
+
+/// The iLink API expects a per-request UIN header.  The reference smoke
+/// client encodes a decimal u32 as base64; keep the same wire format here.
+fn request_uin() -> String {
+    let bytes = uuid::Uuid::new_v4().into_bytes();
+    let value = u32::from_be_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]);
+    base64::engine::general_purpose::STANDARD.encode(value.to_string())
+}
+
+fn api_error_code(value: &Value) -> Option<String> {
+    for field in ["ret", "errcode"] {
+        let Some(value) = value.get(field) else {
+            continue;
+        };
+        match value {
+            Value::Number(number) if number.as_i64() != Some(0) => {
+                return Some(number.to_string());
+            }
+            Value::String(code) if code != "0" && !code.is_empty() => {
+                return Some(code.clone());
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
+fn accept_message(
+    message: &Value,
+    owner: &str,
+    seen: &mut std::collections::HashSet<String>,
+) -> bool {
+    let Some(id) = message_id(message) else {
+        return false;
+    };
+    if message.get("from_user_id").and_then(Value::as_str) != Some(owner) {
+        return false;
+    }
+    seen.insert(id)
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -241,6 +311,8 @@ async fn call(
     if let Some(body) = body {
         request = request
             .header("Content-Type", "application/json")
+            .header("AuthorizationType", "ilink_bot_token")
+            .header("X-WECHAT-UIN", request_uin())
             .body(body.to_string());
     }
     let response = request.send().await.map_err(|e| e.to_string())?;
@@ -248,12 +320,8 @@ async fn call(
         return Err(format!("微信接口 HTTP {}", response.status()));
     }
     let value: Value = response.json().await.map_err(|e| e.to_string())?;
-    if value
-        .get("ret")
-        .and_then(Value::as_i64)
-        .is_some_and(|v| v != 0)
-    {
-        return Err("微信接口返回错误".into());
+    if let Some(code) = api_error_code(&value) {
+        return Err(format!("微信接口返回错误 {code}"));
     }
     Ok(value)
 }
@@ -357,16 +425,7 @@ async fn run(
             .into_iter()
             .flatten()
         {
-            let id = message
-                .get("message_id")
-                .or_else(|| message.get("msg_id"))
-                .and_then(Value::as_str)
-                .unwrap_or("")
-                .to_string();
-            if id.is_empty()
-                || !seen.insert(id)
-                || message.get("from_user_id").and_then(Value::as_str) != Some(&account.1)
-            {
+            if !accept_message(message, &account.1, &mut seen) {
                 continue;
             }
             let text = message
@@ -572,9 +631,59 @@ fn parse_numbered_command(text: &str) -> Option<(&str, &str, &str)> {
 
 #[cfg(test)]
 mod tests {
-    use super::official_base;
+    use super::{accept_message, api_error_code, message_id, official_base};
+    use serde_json::json;
+    use std::collections::HashSet;
     use std::sync::mpsc;
     use std::time::Duration;
+
+    #[test]
+    fn accepts_string_numeric_and_fallback_message_ids() {
+        assert_eq!(
+            message_id(&json!({"message_id":"message-1"})),
+            Some("message-1".into())
+        );
+        assert_eq!(
+            message_id(&json!({"message_id":12345678901234567890_u64})),
+            Some("12345678901234567890".into())
+        );
+        assert_eq!(
+            message_id(&json!({"message_id":"", "msg_id":42})),
+            Some("42".into())
+        );
+        assert_eq!(
+            message_id(&json!({"client_id":"client-1"})),
+            Some("client-1".into())
+        );
+        assert_eq!(message_id(&json!({"message_id":null})), None);
+    }
+
+    #[test]
+    fn message_filter_does_not_consume_other_senders_ids_and_deduplicates() {
+        let mut seen = HashSet::new();
+        let message = json!({"message_id":123, "from_user_id":"owner"});
+        let other_sender = json!({"message_id":123, "from_user_id":"other"});
+
+        assert!(!accept_message(&other_sender, "owner", &mut seen));
+        assert!(accept_message(&message, "owner", &mut seen));
+        assert!(!accept_message(&message, "owner", &mut seen));
+    }
+
+    #[test]
+    fn recognizes_numeric_and_string_api_error_codes() {
+        assert_eq!(api_error_code(&json!({"ret": 0})), None);
+        assert_eq!(api_error_code(&json!({"ret": 1})), Some("1".into()));
+        assert_eq!(api_error_code(&json!({"errcode": 0})), None);
+        assert_eq!(
+            api_error_code(&json!({"errcode": 1101})),
+            Some("1101".into())
+        );
+        assert_eq!(
+            api_error_code(&json!({"errcode": "1101"})),
+            Some("1101".into())
+        );
+        assert_eq!(api_error_code(&json!({"errcode": "0"})), None);
+    }
 
     #[test]
     fn accepts_official_protocol_base_urls() {

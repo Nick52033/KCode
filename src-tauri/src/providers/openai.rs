@@ -142,9 +142,10 @@ impl DeepSeekState {
 enum ChatCompletionsDialect {
     OpenAi,
     DeepSeek(DeepSeekState),
-    /// Step's OpenAI-compatible API returns `reasoning_content` and expects it
-    /// to be replayed with the assistant tool call. Keep it private and
-    /// process-local; it is never projected as a user-visible reasoning event.
+    /// Step's OpenAI-compatible API returns `reasoning_content`, expects it to
+    /// be replayed with the assistant tool call, and exposes the same stream
+    /// as the public thinking timeline in Step Code. Keep the replay copy
+    /// private and process-local while projecting a redacted summary event.
     Step(StepReasoningState),
 }
 
@@ -285,7 +286,18 @@ impl OpenAiChatCompletionsProvider {
                     payload["reasoning_effort"] = json!(effort);
                 }
                 if let Some(max_tokens) = self.config.active_model().max_output_tokens {
-                    payload[chat_output_limit_parameter(&request.model)] = json!(max_tokens);
+                    let parameter = match &self.dialect {
+                        // Step-Code's Step model catalog uses the modern field even
+                        // though the API otherwise follows Chat Completions.
+                        ChatCompletionsDialect::Step(_) => "max_completion_tokens",
+                        ChatCompletionsDialect::OpenAi => {
+                            chat_output_limit_parameter(&request.model)
+                        }
+                        ChatCompletionsDialect::DeepSeek(_) => {
+                            unreachable!("DeepSeek is handled by the dedicated dialect branch")
+                        }
+                    };
+                    payload[parameter] = json!(max_tokens);
                 }
             }
             ChatCompletionsDialect::DeepSeek(_) => {
@@ -599,6 +611,16 @@ impl Provider for OpenAiChatCompletionsProvider {
             let mut tool_calls = ToolCallAccumulator::default();
             let mut deepseek_reasoning_content = String::new();
             let mut step_reasoning_content = String::new();
+            // Step sends its thinking in the OpenAI-compatible
+            // `reasoning_content` field. Give this provider request one stable
+            // item identity so deltas and completion are merged into one
+            // timeline item by AgentRuntime. The replay buffer above remains
+            // separate: it is required by Step's next tool round and must not
+            // be used as a public event payload.
+            let step_reasoning_item_id = step_state
+                .as_ref()
+                .map(|_| format!("step-reasoning-{}", Uuid::new_v4()));
+            let mut step_reasoning_completed = false;
             let mut saw_finish_reason = false;
 
             loop {
@@ -635,6 +657,15 @@ impl Provider for OpenAiChatCompletionsProvider {
                                                     return;
                                                 }
                                                 step_reasoning_content.push_str(&delta);
+                                                if let Some(item_id) = step_reasoning_item_id.as_ref() {
+                                                    yield Ok(redact_event(
+                                                        ProviderEvent::ReasoningSummaryDelta {
+                                                            item_id: item_id.clone(),
+                                                            delta,
+                                                        },
+                                                        &secret,
+                                                    ));
+                                                }
                                             }
                                         }
                                         for event in parsed.events.into_iter().map(|event| redact_event(event, &secret)) { yield Ok(event); }
@@ -644,6 +675,19 @@ impl Provider for OpenAiChatCompletionsProvider {
                                         }
                                         if parsed.completion == FrameCompletion::FinishReason {
                                             saw_finish_reason = true;
+                                            if let Some(item_id) = step_reasoning_item_id.as_ref()
+                                                && !step_reasoning_completed
+                                                && !step_reasoning_content.is_empty()
+                                            {
+                                                step_reasoning_completed = true;
+                                                yield Ok(redact_event(
+                                                    ProviderEvent::ReasoningSummaryCompleted {
+                                                        item_id: item_id.clone(),
+                                                        summary: step_reasoning_content.clone(),
+                                                    },
+                                                    &secret,
+                                                ));
+                                            }
                                             match tool_calls.take() {
                                                 Ok(calls) => {
                                                     if let Some((state, thinking_enabled)) = &deepseek {
@@ -664,6 +708,18 @@ impl Provider for OpenAiChatCompletionsProvider {
                                             }
                                         }
                                         if parsed.completion == FrameCompletion::DoneMarker {
+                                            if let Some(item_id) = step_reasoning_item_id.as_ref()
+                                                && !step_reasoning_completed
+                                                && !step_reasoning_content.is_empty()
+                                            {
+                                                yield Ok(redact_event(
+                                                    ProviderEvent::ReasoningSummaryCompleted {
+                                                        item_id: item_id.clone(),
+                                                        summary: step_reasoning_content.clone(),
+                                                    },
+                                                    &secret,
+                                                ));
+                                            }
                                             match tool_calls.take() {
                                                 Ok(calls) => {
                                                     if let Some((state, thinking_enabled)) = &deepseek {
@@ -699,6 +755,18 @@ impl Provider for OpenAiChatCompletionsProvider {
                     None => {
                         if let Err(error) = decoder.finish() { yield Err(error); return; }
                         if saw_finish_reason {
+                            if let Some(item_id) = step_reasoning_item_id.as_ref()
+                                && !step_reasoning_completed
+                                && !step_reasoning_content.is_empty()
+                            {
+                                yield Ok(redact_event(
+                                    ProviderEvent::ReasoningSummaryCompleted {
+                                        item_id: item_id.clone(),
+                                        summary: step_reasoning_content.clone(),
+                                    },
+                                    &secret,
+                                ));
+                            }
                             match tool_calls.take() {
                                 Ok(calls) => {
                                     if let Some((state, thinking_enabled)) = &deepseek {
@@ -1416,6 +1484,135 @@ mod tests {
         )
         .unwrap();
         assert!(unknown[0].get("reasoning_content").is_none());
+    }
+
+    #[tokio::test]
+    async fn step_stream_projects_reasoning_summary_and_replays_private_reasoning() {
+        let first_response = concat!(
+            r#"data: {"choices":[{"delta":{"reasoning_content":"先检查文件，"}}]}"#,
+            "\n\n",
+            r#"data: {"choices":[{"delta":{"reasoning_content":"确认结果。","tool_calls":[{"index":0,"id":"step-call-live","function":{"name":"read_file","arguments":"{\"path\":\"README.md\"}"}}]},"finish_reason":"tool_calls"}]}"#,
+            "\n\n",
+            "data: [DONE]\n\n"
+        );
+        let second_response = concat!(
+            r#"data: {"choices":[{"delta":{"content":"已完成"},"finish_reason":"stop"}]}"#,
+            "\n\n",
+            "data: [DONE]\n\n"
+        );
+        let (base_url, mut received, server) =
+            spawn_sse_server(vec![first_response, second_response]).await;
+        let mut config = provider_config("step-5-preview");
+        config.transport = ProviderTransport::OpenAiChatCompletions;
+        config.name = "StepFun".into();
+        config.base_url = base_url;
+        config.models = vec![ProviderModelConfig {
+            id: "step-5-preview".into(),
+            display_name: "step-5-preview".into(),
+            context_window: 128_000,
+            max_output_tokens: Some(8_192),
+            supports_vision: false,
+            fallback: false,
+        }];
+        let provider = StepChatCompletionsProvider::new(config, "step-key".to_string())
+            .expect("Step provider should build");
+
+        let first_request = provider_request(
+            ReasoningEffort::High,
+            vec![ProviderMessage::Text {
+                role: MessageRole::User,
+                text: "读取 README".to_string(),
+            }],
+        );
+        let mut first_stream = provider
+            .stream(first_request, CancellationToken::new())
+            .await
+            .expect("first request should connect");
+        let mut first_events = Vec::new();
+        while let Some(event) = first_stream.next().await {
+            first_events.push(event.expect("first stream should be valid"));
+        }
+
+        let deltas = first_events
+            .iter()
+            .filter_map(|event| match event {
+                ProviderEvent::ReasoningSummaryDelta { delta, .. } => Some(delta.as_str()),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(deltas, vec!["先检查文件，", "确认结果。"]);
+        let completed_summary = first_events.iter().find_map(|event| match event {
+            ProviderEvent::ReasoningSummaryCompleted { summary, .. } => Some(summary.as_str()),
+            _ => None,
+        });
+        assert_eq!(completed_summary, Some("先检查文件，确认结果。"));
+        assert_eq!(
+            first_events
+                .iter()
+                .filter(|event| matches!(event, ProviderEvent::ReasoningSummaryCompleted { .. }))
+                .count(),
+            1,
+            "a finish_reason followed by [DONE] must complete the Step summary once"
+        );
+        let summary_index = first_events
+            .iter()
+            .position(|event| matches!(event, ProviderEvent::ReasoningSummaryCompleted { .. }))
+            .expect("Step reasoning should complete");
+        let call_index = first_events
+            .iter()
+            .position(|event| matches!(event, ProviderEvent::ToolCall { .. }))
+            .expect("Step tool call should be returned");
+        assert!(
+            summary_index < call_index,
+            "the visible Step reasoning should finish before the tool starts"
+        );
+        let returned_call = first_events.into_iter().find_map(|event| match event {
+            ProviderEvent::ToolCall { call } => Some(call),
+            _ => None,
+        });
+        let returned_call = returned_call.expect("first request should yield a tool call");
+
+        let second_request = provider_request(
+            ReasoningEffort::High,
+            vec![
+                ProviderMessage::Text {
+                    role: MessageRole::User,
+                    text: "读取 README".to_string(),
+                },
+                ProviderMessage::AssistantToolCalls {
+                    text: String::new(),
+                    calls: vec![returned_call],
+                },
+                ProviderMessage::ToolResult {
+                    call_id: "step-call-live".to_string(),
+                    name: "read_file".to_string(),
+                    success: true,
+                    output: "README 内容".to_string(),
+                },
+            ],
+        );
+        let mut second_stream = provider
+            .stream(second_request, CancellationToken::new())
+            .await
+            .expect("second request should connect");
+        while let Some(event) = second_stream.next().await {
+            event.expect("second stream should be valid");
+        }
+
+        let first_payload = received.recv().await.expect("first payload should arrive");
+        assert_eq!(first_payload["reasoning_effort"], "high");
+        assert_eq!(first_payload["max_completion_tokens"], 8_192);
+        assert!(first_payload.get("max_tokens").is_none());
+        let second_payload = received.recv().await.expect("second payload should arrive");
+        assert_eq!(
+            second_payload["messages"][1]["reasoning_content"],
+            "先检查文件，确认结果。"
+        );
+        assert_eq!(
+            second_payload["messages"][1]["tool_calls"][0]["id"],
+            "step-call-live"
+        );
+        server.await.expect("test server should stop cleanly");
     }
 
     #[test]

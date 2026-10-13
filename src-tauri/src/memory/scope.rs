@@ -381,7 +381,9 @@ mod tests {
         assert_eq!(resolver.scopes(&id).unwrap(), thread_user_scopes(&id));
         assert!(resolver.default_scope(&id, MemoryType::Fact).is_err());
 
-        let child = canonical.join("child");
+        // 用未经 canonicalize 的原始目录构造别名，避免 `PathBuf::push` 在 Windows
+        // verbatim 路径上把 `..` 折叠掉，从而真的登记一条非规范路径。
+        let child = directory.path().join("child");
         std::fs::create_dir(&child).unwrap();
         let alias_id = Uuid::new_v4().to_string();
         db.upsert_project(&ProjectRecord {
@@ -418,7 +420,7 @@ mod tests {
         }
         db.with_connection(|connection| {
             connection.execute(
-                "UPDATE threads SET workspace_path=?1 WHERE id=?2",
+                "UPDATE sessions SET workspace_path=?1 WHERE id=?2",
                 rusqlite::params![canonical.join("missing").to_string_lossy().to_string(), id],
             )?;
             Ok(())

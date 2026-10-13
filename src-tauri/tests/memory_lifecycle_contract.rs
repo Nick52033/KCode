@@ -14,7 +14,10 @@ use k_coder_lib::memory::{MemoryScope, MemoryScopeKind, MemorySettings};
 use k_coder_lib::persistence::ProjectionDb;
 use k_coder_lib::protocol::{AgentEventEnvelope, TokenUsage, TurnState};
 use k_coder_lib::providers::testing::FakeProvider;
-use k_coder_lib::providers::{CredentialError, CredentialStore, ProviderError, ProviderEvent};
+use k_coder_lib::providers::{
+    CredentialError, CredentialStore, ProviderError, ProviderEvent, ProviderKind,
+    ProviderModelConfig, ProviderTransport, SaveProviderConfigRequest,
+};
 use k_coder_lib::storage::memory_capture_repository::{
     CaptureCounts, CaptureJobStatus, MAX_CAPTURE_QUEUED_JOBS, MemoryCaptureJob,
     MemoryCaptureRepository,
@@ -59,6 +62,77 @@ fn repository() -> (TempDir, MemoryCaptureRepository) {
     let repository = MemoryCaptureRepository::new(ProjectionDb::open(directory.path()).unwrap());
     repository.initialize().unwrap();
     (directory, repository)
+}
+
+/// A credential store that always answers, so a configured provider resolves without a server.
+#[derive(Default)]
+struct FixtureCredentials;
+
+impl CredentialStore for FixtureCredentials {
+    fn get_api_key(&self, _: &str) -> Result<Option<String>, CredentialError> {
+        Ok(Some("fixture-key".into()))
+    }
+    fn set_api_key(&self, _: &str, _: &str) -> Result<(), CredentialError> {
+        Ok(())
+    }
+    fn delete_api_key(&self, _: &str) -> Result<(), CredentialError> {
+        Ok(())
+    }
+}
+
+/// Builds an `AppState` whose projection and capture log live directly in `directory`, with a
+/// provider configured so `MemoryCaptureService::diagnostics` can report availability without a
+/// live server and without tripping the capture skip reasons.
+fn state_over(directory: &TempDir) -> AppState {
+    let state = AppState::with_workspace_and_credentials(
+        directory.path(),
+        directory.path(),
+        Arc::new(FixtureCredentials),
+    )
+    .unwrap();
+    state
+        .repository()
+        .projection()
+        .set_setting(
+            "memory.settings",
+            &serde_json::to_string(&settings()).unwrap(),
+        )
+        .unwrap();
+    state
+        .save_provider_config(SaveProviderConfigRequest {
+            id: "fixture".into(),
+            kind: ProviderKind::OpenAiCompatible,
+            transport: ProviderTransport::OpenAiChatCompletions,
+            name: "Fixture".into(),
+            base_url: "http://127.0.0.1:1/v1".into(),
+            model: "fixture".into(),
+            models: vec![ProviderModelConfig {
+                id: "fixture".into(),
+                display_name: "Fixture".into(),
+                context_window: 128_000,
+                max_output_tokens: Some(256),
+                supports_vision: false,
+                fallback: false,
+            }],
+            endpoints: Vec::new(),
+            fallback_provider_ids: Vec::new(),
+            api_key: Some("fixture-key".into()),
+            activate: true,
+        })
+        .unwrap();
+    state
+}
+
+/// Snapshots diagnostics without `lastReason`, which `MemoryCaptureService::diagnostics` derives
+/// from the live settings rather than from durable state, so an unauthorized consent version
+/// legitimately rewrites it without touching the capture log.
+fn diagnostics_without_reason(
+    service: &MemoryCaptureService,
+    state: &AppState,
+) -> serde_json::Value {
+    let mut value = serde_json::to_value(service.diagnostics(state).unwrap()).unwrap();
+    value.as_object_mut().unwrap().remove("lastReason");
+    value
 }
 
 fn complete(repository: &MemoryCaptureRepository, id: &str) {
@@ -139,6 +213,7 @@ fn summaries_are_redacted_bounded_and_never_quote_tool_output() {
 #[test]
 fn capture_is_turn_idempotent_without_scanning_old_rounds() {
     let directory = TempDir::new().unwrap();
+    let state = state_over(&directory);
     let service = MemoryCaptureService::new(ProjectionDb::open(directory.path()).unwrap());
     let thread = Uuid::new_v4().to_string();
     let turn = Uuid::new_v4().to_string();
@@ -184,7 +259,7 @@ fn capture_is_turn_idempotent_without_scanning_old_rounds() {
             )
             .unwrap()
     );
-    assert_eq!(service.diagnostics().unwrap().queued_jobs, 1);
+    assert_eq!(service.diagnostics(&state).unwrap().queued_jobs, 1);
     assert!(
         service
             .capture_success(
@@ -200,15 +275,16 @@ fn capture_is_turn_idempotent_without_scanning_old_rounds() {
             .is_err()
     );
     let recovered = MemoryCaptureService::new(ProjectionDb::open(directory.path()).unwrap());
-    assert_eq!(recovered.diagnostics().unwrap().queued_jobs, 1);
+    assert_eq!(recovered.diagnostics(&state).unwrap().queued_jobs, 1);
 }
 
 #[test]
 fn record_skip_only_updates_bounded_redacted_diagnostics_and_deduplicates() {
     let directory = TempDir::new().unwrap();
+    let state = state_over(&directory);
     let service = MemoryCaptureService::new(ProjectionDb::open(directory.path()).unwrap());
     service.record_skip("non_user_source").unwrap();
-    let diagnostics = service.diagnostics().unwrap();
+    let diagnostics = service.diagnostics(&state).unwrap();
     assert_eq!(diagnostics.last_reason.as_deref(), Some("non_user_source"));
     assert_eq!(diagnostics.last_capture_at_ms, None);
     assert_eq!(diagnostics.last_extraction_at_ms, None);
@@ -224,7 +300,7 @@ fn record_skip_only_updates_bounded_redacted_diagnostics_and_deduplicates() {
     service.record_skip(&"中".repeat(800)).unwrap();
     assert_eq!(
         service
-            .diagnostics()
+            .diagnostics(&state)
             .unwrap()
             .last_reason
             .unwrap()
@@ -244,10 +320,14 @@ fn record_skip_only_updates_bounded_redacted_diagnostics_and_deduplicates() {
     assert!(!log.contains("private\\\\repo"));
     let recovered = MemoryCaptureService::new(ProjectionDb::open(directory.path()).unwrap());
     assert_eq!(
-        recovered.diagnostics().unwrap().last_reason.as_deref(),
+        recovered
+            .diagnostics(&state)
+            .unwrap()
+            .last_reason
+            .as_deref(),
         Some("sensitive_detail_omitted")
     );
-    assert_eq!(recovered.diagnostics().unwrap().queued_jobs, 0);
+    assert_eq!(recovered.diagnostics(&state).unwrap().queued_jobs, 0);
 }
 
 #[test]
@@ -358,8 +438,13 @@ fn malformed_version_retains_projection_and_torn_tail_is_repaired_before_append(
     assert!(recovered.initialize().is_err());
     assert_eq!(recovered.diagnostics().unwrap().queued_jobs, 2);
     let service = MemoryCaptureService::new(ProjectionDb::open(directory.path()).unwrap());
+    let state = state_over(&directory);
     assert_eq!(
-        service.diagnostics().unwrap().recovery_error.as_deref(),
+        service
+            .diagnostics(&state)
+            .unwrap()
+            .recovery_error
+            .as_deref(),
         Some("capture_recovery_failed")
     );
 }
@@ -509,7 +594,7 @@ async fn unauthorized_consent_versions_are_no_ops_for_both_runtime_entries() {
     let service = state.memory_capture();
     let publisher = Arc::new(Publisher::default());
     let provider = Arc::new(FakeProvider::text(&["unused"]));
-    let before = serde_json::to_value(service.diagnostics().unwrap()).unwrap();
+    let before = diagnostics_without_reason(&service, &state);
     let path = directory.path().join("data/memory/capture-events.jsonl");
     let durable_before = fs::read(&path).unwrap();
     for version in [0, 1, AUTO_EXTRACTION_CONSENT_VERSION + 1] {
@@ -539,9 +624,10 @@ async fn unauthorized_consent_versions_are_no_ops_for_both_runtime_entries() {
         assert_eq!(queued.attempts, 0);
         assert_eq!(queued.updated_at_ms, NOW);
         assert_eq!(
-            serde_json::to_value(service.diagnostics().unwrap()).unwrap(),
-            before
+            service.diagnostics(&state).unwrap().last_reason.as_deref(),
+            Some("extraction_consent_required")
         );
+        assert_eq!(diagnostics_without_reason(&service, &state), before);
         assert_eq!(fs::read(&path).unwrap(), durable_before);
     }
     assert!(publisher.0.lock().unwrap().is_empty());
@@ -565,7 +651,7 @@ async fn provider_unavailable_does_not_claim_a_job_or_create_a_thread() {
     assert_eq!(repository.get("source-turn").unwrap().unwrap().attempts, 0);
     assert_eq!(
         service
-            .diagnostics()
+            .diagnostics(&state)
             .unwrap()
             .provider_unavailable_reason
             .as_deref(),

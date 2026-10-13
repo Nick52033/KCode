@@ -176,6 +176,7 @@ interface WorkbenchState {
   resolvePendingApproval: (resolution: ApprovalResolution) => Promise<boolean>;
   resolvePendingUserInput: (resolution: UserInputResolution) => Promise<boolean>;
   undoAppliedChange: (changeId: string) => Promise<boolean>;
+  undoAppliedChanges: (changeIds: string[]) => Promise<boolean>;
   acceptAppliedChanges: (changeIds: string[]) => Promise<boolean>;
   handleAgentEvent: (event: AgentEvent) => void;
   handleMailboxChanged: (event: ThreadMailboxChanged) => void;
@@ -1142,6 +1143,42 @@ export const useWorkbenchStore = create<WorkbenchState>((set, get) => ({
       set({ error: errorMessage(error) });
       return false;
     }
+  },
+
+  undoAppliedChanges: async (changeIds) => {
+    const threadId = get().activeThreadId;
+    if (!threadId || get().activeTurns[threadId]) return false;
+
+    const uniqueChangeIds = [...new Set(changeIds)];
+    if (uniqueChangeIds.length === 0) return true;
+
+    set({ error: "" });
+    const failures: string[] = [];
+    for (const changeId of uniqueChangeIds) {
+      try {
+        const change = await undoChange(threadId, changeId);
+        set((state) => ({
+          changes: state.changes.map((item) =>
+            item.id === change.id ? { ...item, undone: true, needsReview: false } : item,
+          ),
+        }));
+      } catch (error) {
+        failures.push(errorMessage(error));
+      }
+    }
+
+    if (failures.length > 0) {
+      const failureSummary = failures.slice(0, 3).join("；");
+      const additionalFailures = failures.length > 3 ? `；另有 ${failures.length - 3} 项未能撤销` : "";
+      const undoneCount = uniqueChangeIds.length - failures.length;
+      set({
+        error: `已撤销 ${undoneCount} 项，${failures.length} 项未能撤销：${failureSummary}${additionalFailures}`,
+      });
+      return false;
+    }
+
+    set({ error: "" });
+    return true;
   },
 
   acceptAppliedChanges: async (changeIds) => {

@@ -531,6 +531,7 @@ fn result(output: Value, metadata: Value) -> Result<ToolResult, ToolError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::memory::CandidateDecision;
     use crate::memory::UpsertMemoryCommand;
     use crate::protocol::{ChatMessage, PROTOCOL_VERSION};
     use crate::storage::memory_repository::{
@@ -588,6 +589,10 @@ mod tests {
             MemoryScopeResolver::new(self.repository.projection())
                 .default_scope(&self.context.thread_id, memory_type)
                 .unwrap()
+        }
+
+        fn set_auto_accept(&self, enabled: bool) {
+            self.memory.set_settings(true, enabled, 0).unwrap();
         }
     }
 
@@ -802,8 +807,16 @@ mod tests {
             )
             .await
             .unwrap();
-        let candidate = &fixture.memory.list_candidates("accepted", None).unwrap()[0];
+        // `remember` carries the legacy default confidence, so even with auto-accept enabled the
+        // candidate still waits for review: a forged source can neither skip the queue nor widen
+        // the scope.
+        let candidate = &fixture.memory.list_candidates("pending", None).unwrap()[0];
         assert_eq!(candidate.scope_type, "project");
+        fixture
+            .memory
+            .review_candidate(&candidate.id, CandidateDecision::Accept)
+            .unwrap();
+        let candidate = &fixture.memory.list_candidates("accepted", None).unwrap()[0];
         let scope = fixture.scope(MemoryType::Fact);
         let page = fixture
             .memory
@@ -879,7 +892,7 @@ mod tests {
             .projection()
             .with_connection(|connection| {
                 connection.execute(
-                    "UPDATE threads SET workspace_path=?1 WHERE id=?2",
+                    "UPDATE sessions SET workspace_path=?1 WHERE id=?2",
                     rusqlite::params![
                         fixture
                             ._directory
@@ -910,7 +923,9 @@ mod tests {
                     CancellationToken::new(),
                 )
                 .await,
-            Err(ToolError::InvalidArguments(_))
+            // MEM_INVALID_SCOPE is a host authorization refusal (the workspace binding no
+            // longer canonicalizes), not a malformed payload, so it surfaces as a denial.
+            Err(ToolError::Denied(_))
         ));
         for (memory_type, content) in [
             ("work_state", "new thread state"),

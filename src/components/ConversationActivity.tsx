@@ -31,7 +31,7 @@ import type {
   TurnTimelineItem,
 } from "../types/runtime";
 import { changeLineStats } from "../lib/diff";
-import { isDisplayableReasoningSummary } from "../lib/reasoningSummary";
+import { isDisplayableReasoningSummary, isStepFunReasoningItem } from "../lib/reasoningSummary";
 import { DELEGATION_TOOL_NAMES, subagentIdsOf } from "../lib/subagent";
 import { PlanProgress } from "./PlanProgress";
 import { RetryWaitingLabel } from "./RetryWaitingLabel";
@@ -391,7 +391,10 @@ export function isVisibleConversationTimelineItem(item: TurnTimelineItem) {
 }
 
 function isDisplayableReasoningItem(item: ReasoningTimelineItem) {
-  return Boolean(item.visibleSummary) || isDisplayableReasoningSummary(item.summary);
+  return Boolean(item.visibleSummary) || isDisplayableReasoningSummary(
+    item.summary,
+    { allowStepFun: isStepFunReasoningItem(item.itemId) },
+  );
 }
 
 function reasoningSummaryText(item: ReasoningTimelineItem) {
@@ -400,7 +403,7 @@ function reasoningSummaryText(item: ReasoningTimelineItem) {
 
 /**
  * 从时间线提取最新一条可见推理摘要的最后一行，作为活动状态的动态标题。
- * 复用与"思考摘要"展示一致的中文/内容过滤；最新摘要不可展示时回退到固定阶段文案。
+ * 复用与"思考摘要"展示一致的 Provider 可见性/内容过滤；最新摘要不可展示时回退到固定阶段文案。
  */
 function latestReasoningHint(timeline: TurnTimelineItem[]) {
   const item = [...timeline].reverse().find(

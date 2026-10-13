@@ -41,9 +41,7 @@ pub(crate) mod instructions;
 pub mod mailbox;
 mod provider_history;
 mod read_observation;
-#[cfg(test)]
-use read_observation::ReadObservationDecision;
-use read_observation::{ReadObservationTracker, read_observation_result};
+use read_observation::{ReadObservationDecision, ReadObservationTracker, read_observation_result};
 pub mod query_rewrite;
 pub mod thread_operation;
 pub(crate) use input::build_user_message;
@@ -280,6 +278,10 @@ struct ProductiveProgressTracker {
     completed_plan_steps: usize,
     workspace_revision: u64,
     productive_command_results: HashSet<u64>,
+    /// Content-bearing read-only observations this Turn has already seen.
+    /// Re-observing the same content is not progress; content this Turn has
+    /// never observed before is.
+    observed_observations: HashSet<u64>,
     progress_nudge_stage: u32,
 }
 
@@ -321,16 +323,34 @@ impl ProductiveProgressTracker {
         new_read_coverage: bool,
     ) -> bool {
         let mut workspace_changed = false;
+        // A repeated verification/mutation command is not a *new* productive
+        // result, but it still means the model is working instead of idling, so
+        // it refreshes the stall window without claiming progress.
+        let mut refreshes_stall_window = false;
         let productive = match call.name.as_str() {
             "read_file" if new_read_coverage => true,
-            _ if is_read_only_observation_tool(&call.name) => false,
+            _ if is_read_only_observation_tool(&call.name) => {
+                // An observation only advances work when it reveals content this
+                // Turn has not seen before. Empty listings and zero-result
+                // searches are the classic stall: the model keeps asking for
+                // information that does not exist.
+                match observation_content_fingerprint(&call.name, result) {
+                    Some(fingerprint) => self.observed_observations.insert(fingerprint),
+                    None => false,
+                }
+            }
             "run_command" => {
                 let Some(signature) =
                     productive_command_signature(call, result, self.workspace_revision)
                 else {
                     return false;
                 };
-                self.productive_command_results.insert(signature)
+                if self.productive_command_results.insert(signature) {
+                    true
+                } else {
+                    refreshes_stall_window = true;
+                    false
+                }
             }
             "update_plan" => {
                 if !result.success {
@@ -347,38 +367,70 @@ impl ProductiveProgressTracker {
                 }
             }
             "apply_patch" | "write_file" => {
-                workspace_changed = result.success && change_set_has_file_changes(result);
+                workspace_changed =
+                    result.success && change_set_has_productive_file_changes(result);
                 workspace_changed
             }
             _ => result.success,
         };
-        if !productive {
+        if !productive && !refreshes_stall_window {
             return false;
         }
         if workspace_changed {
             self.workspace_revision = self.workspace_revision.saturating_add(1);
         }
         self.mark_progress(provider_call_count, tool_call_count);
-        true
+        productive
     }
 
     fn failure_reason(&self, provider_call_count: u32, tool_call_count: u32) -> Option<String> {
         let provider_calls = provider_call_count.saturating_sub(self.last_progress_provider_call);
         if provider_calls >= MAX_PROVIDER_CALLS_WITHOUT_PRODUCTIVE_PROGRESS {
             return Some(format!(
-                "连续 {} 次模型请求没有产生实质进展（文件变更、计划步骤完成或新的验证结果），为防止空转已停止本轮。请开启新 Turn 并从当前剩余工作继续。",
+                "连续 {} 次模型请求没有产生实质进展（无实质进展：没有文件变更、计划步骤完成或新的验证结果），为防止空转已停止本轮。请开启新 Turn 并从当前剩余工作继续。",
                 MAX_PROVIDER_CALLS_WITHOUT_PRODUCTIVE_PROGRESS
             ));
         }
         let tool_calls = tool_call_count.saturating_sub(self.last_progress_tool_call);
         if tool_calls >= MAX_TOOL_CALLS_WITHOUT_PRODUCTIVE_PROGRESS {
             return Some(format!(
-                "连续 {} 次工具调用没有产生实质进展（文件变更、计划步骤完成或新的验证结果），为防止空转已停止本轮。请开启新 Turn 并从当前剩余工作继续。",
+                "连续 {} 次工具调用没有产生实质进展（无实质进展：没有文件变更、计划步骤完成或新的验证结果），为防止空转已停止本轮。请开启新 Turn 并从当前剩余工作继续。",
                 MAX_TOOL_CALLS_WITHOUT_PRODUCTIVE_PROGRESS
             ));
         }
         None
     }
+}
+
+/// Content fingerprint of a read-only observation.
+///
+/// Only observations that actually revealed content produce a fingerprint, so
+/// an empty directory listing or a zero-result search keeps counting as "no
+/// progress". The fingerprint covers what was observed (path/entries for a
+/// listing, results for a search), never the wording of the request, so
+/// repeating an observation the model already has is not progress either.
+fn observation_content_fingerprint(name: &str, result: &ToolResult) -> Option<u64> {
+    let mut hasher = DefaultHasher::new();
+    match name {
+        "list_directory" => {
+            if result.metadata.get("entryCount").and_then(Value::as_u64)? == 0 {
+                return None;
+            }
+            "list_directory".hash(&mut hasher);
+            result.metadata.get("path").hash(&mut hasher);
+            result.metadata.get("directoryRevision").hash(&mut hasher);
+        }
+        "search_repository" => {
+            if result.metadata.get("resultCount").and_then(Value::as_u64)? == 0 {
+                return None;
+            }
+            "search_repository".hash(&mut hasher);
+            result.metadata.get("query").hash(&mut hasher);
+            result.metadata.get("resultRevision").hash(&mut hasher);
+        }
+        _ => return None,
+    }
+    Some(hasher.finish())
 }
 
 fn is_read_only_observation_tool(name: &str) -> bool {
@@ -396,13 +448,33 @@ fn is_read_only_observation_tool(name: &str) -> bool {
         || name.starts_with("get_")
 }
 
-fn change_set_has_file_changes(result: &ToolResult) -> bool {
+/// Return whether a successful file change touched a path that represents
+/// actual work for the user. Models sometimes write short-lived probe scripts
+/// while exploring a failure; counting those files as progress lets an
+/// otherwise stalled Turn keep resetting the productive-progress guard.
+fn change_set_has_productive_file_changes(result: &ToolResult) -> bool {
     result
         .metadata
         .get("changeSet")
         .and_then(|change_set| change_set.get("files"))
         .and_then(Value::as_array)
-        .is_some_and(|files| !files.is_empty())
+        .is_some_and(|files| {
+            files.iter().any(|file| {
+                [
+                    file.get("path").and_then(Value::as_str),
+                    file.get("destinationPath").and_then(Value::as_str),
+                ]
+                .into_iter()
+                .flatten()
+                .any(|path| !is_temporary_probe_path(path))
+            })
+        })
+}
+
+fn is_temporary_probe_path(path: &str) -> bool {
+    path.replace('\\', "/").split('/').any(|segment| {
+        segment.eq_ignore_ascii_case(".tmp") || segment.eq_ignore_ascii_case(".tmp-probe")
+    })
 }
 
 /// 语义上正常的工具结果，不应计入失败埋点。
@@ -1271,6 +1343,11 @@ impl AgentRuntime {
         let mut last_call_signature = None::<String>;
         let mut identical_call_streak = 0usize;
         let mut read_observations = ReadObservationTracker::default();
+        // Productive progress is measured against everything this Turn has
+        // already observed. Compaction and workflow-node resets only change
+        // which read bodies the model is reminded about; they must never make
+        // an already-read range look like new work again.
+        let mut productive_read_observations = ReadObservationTracker::default();
         let token_budget = self.max_total_tokens;
         let mut soft_turn_segment = self
             .soft_turn_limits
@@ -2746,6 +2823,15 @@ impl AgentRuntime {
                     no_progress_count = 0;
                 }
 
+                // Read coverage that survives context resets: only genuinely
+                // new content counts as productive progress, so repeated
+                // compaction cannot turn a reread into new work.
+                let mut productive_read_coverage = false;
+                if call.name == "read_file" {
+                    productive_read_coverage = productive_read_observations.observe(&result)
+                        == Some(ReadObservationDecision::NewCoverage);
+                }
+
                 if call.name == "read_file"
                     && let Some(decision) = read_observations.observe(&result)
                 {
@@ -2823,8 +2909,7 @@ impl AgentRuntime {
                         tool_call_count,
                         &call,
                         &result,
-                        result.metadata.get("observationStatus").and_then(Value::as_str)
-                            == Some("read_observation_new_coverage"),
+                        productive_read_coverage,
                     );
                 }
 

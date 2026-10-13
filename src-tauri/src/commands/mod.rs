@@ -26,6 +26,7 @@ use crate::agent::{
     build_user_message,
 };
 use crate::app_state::{AppState, AppStateError};
+#[cfg(test)]
 use crate::context::assembler::{ContextAssembler, memory_fragments};
 use crate::entities::{DEFAULT_RELATION_LIMIT, EntityError, FactDecision, RelationQueryResult};
 use crate::execution::{
@@ -48,9 +49,9 @@ use crate::memory::scope::{MemoryScopeOption, MemoryScopeResolver};
 use crate::memory::{
     CandidateDecision, CandidateOutcome, DreamReport, DreamStatus, MAX_MAINTENANCE_INPUT_MEMORIES,
     MaintenanceOutcome, MaintenanceReport, MaintenanceSettings, MaintenanceTrigger,
-    MemoryClearOutcome, MemoryError, MemoryPage, MemoryScope, MemoryScopeKind, MemorySettings,
-    MemoryStatus, MemoryType, MemoryUpsertOutcome, bound_failure, build_maintenance_prompt,
-    parse_proposals, run_offline_maintenance,
+    MemoryClearOutcome, MemoryError, MemoryPage, MemoryScope, MemorySettings, MemoryStatus,
+    MemoryType, MemoryUpsertOutcome, bound_failure, build_maintenance_prompt, parse_proposals,
+    run_offline_maintenance,
 };
 use crate::multi_agent::{
     CreateSubagentRequest, MultiAgentCoordinator, MultiAgentError, SubagentEventPublisher,
@@ -442,15 +443,57 @@ impl EventPublisher for MemoryCapturePublisher {
     }
 }
 
+/// Queues a memory-capture job for a turn the user actually cared about.
+///
+/// Only a user-initiated, completed Craft turn is captured: Ask turns are read-only consultations,
+/// Plan turns never change the workspace, and background turns (workflow drives, scheduled work,
+/// mailbox replays) carry no user intent worth remembering. This queue is the single entry into the
+/// extraction pipeline, so the guards live here instead of in the service. Every failure is recorded
+/// as a skip reason rather than surfaced: capture must never break a finished turn.
 fn capture_memory_outcome(
-    _state: &AppState,
-    _input: &str,
-    _mode: AgentMode,
-    _user_source: bool,
-    _outcome: &TurnOutcome,
-    _buffer: &Arc<std::sync::Mutex<MemoryCaptureBuffer>>,
+    state: &AppState,
+    input: &str,
+    mode: AgentMode,
+    user_source: bool,
+    outcome: &TurnOutcome,
+    buffer: &Arc<std::sync::Mutex<MemoryCaptureBuffer>>,
 ) {
-    // Workspace memory is sourced exclusively from local Markdown files.
+    if !user_source || !matches!(mode, AgentMode::Craft) || outcome.state != TurnState::Completed {
+        return;
+    }
+    let Ok(settings) = state.memory().settings() else {
+        return;
+    };
+    // The host resolves the scope from the thread binding: a bound turn is captured into its
+    // project scope and an unbound thread into the thread scope, so an unresolvable binding is a
+    // skip instead of a silent fallback to a wider scope.
+    let scope = match MemoryScopeResolver::new(state.repository().projection())
+        .default_scope(&outcome.thread_id, MemoryType::Preference)
+    {
+        Ok(scope) => scope,
+        Err(error) => {
+            let _ = state.memory_capture().record_skip(error.code());
+            return;
+        }
+    };
+    let (final_text, tools) = {
+        let buffer = buffer
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        (buffer.final_text.clone(), buffer.tools.clone())
+    };
+    if let Err(error) = state.memory_capture().capture_success(
+        &outcome.thread_id,
+        &outcome.turn_id,
+        scope,
+        input,
+        &final_text,
+        &tools,
+        outcome.started_at_ms,
+        &settings,
+    ) {
+        let _ = state.memory_capture().record_skip(error.code());
+    }
 }
 
 struct TauriEventPublisher {
@@ -964,11 +1007,15 @@ fn assemble_memory_context(
         thread_id,
         &[
             MemoryScope::user(),
-            MemoryScope::new(MemoryScopeKind::Thread, Some(thread_id.to_owned())),
+            MemoryScope::new(
+                crate::memory::MemoryScopeKind::Thread,
+                Some(thread_id.to_owned()),
+            ),
         ],
     )
 }
 
+#[cfg(test)]
 fn assemble_scoped_memory_context(
     memory: &crate::memory::MemoryService,
     logger: &crate::logging::StructuredLogger,
@@ -2555,9 +2602,6 @@ pub async fn run_memory_maintenance(
 pub fn cancel_memory_maintenance(state: State<'_, AppState>) -> CommandResult<bool> {
     Ok(state.memory_maintenance().cancel())
 }
-
-/// How often the maintenance scheduler re-checks its two gates.
-const MEMORY_MAINTENANCE_POLL_SECS: u64 = 5;
 
 /// Starts the background scheduler that decides when an automatic maintenance run may happen.
 ///
@@ -4757,7 +4801,8 @@ mod tests {
     use crate::policy::ApprovalManager;
     use crate::protocol::memory::SetMemoryMaintenanceSettingsRequest;
     use crate::protocol::{
-        AgentEvent, AgentEventEnvelope, AgentMode, ApprovalMode, PROTOCOL_VERSION, ReasoningEffort,
+        AgentEvent, AgentEventEnvelope, AgentMode, ApprovalMode, ChatMessage, ContentBlock,
+        PROTOCOL_VERSION, ReasoningEffort,
     };
     use crate::providers::{
         CredentialError, CredentialStore, ProviderError, ProviderKind, ProviderModelConfig,
@@ -4795,7 +4840,15 @@ mod tests {
         publisher.publish(AgentEventEnvelope::new(AgentEvent::TurnCompleted {
             thread_id: Uuid::new_v4().to_string(),
             turn_id: Uuid::new_v4().to_string(),
-            message: ChatMessage::text_message(MessageRole::Assistant, "公".repeat(3_000)),
+            message: ChatMessage {
+                schema_version: PROTOCOL_VERSION,
+                id: "message-1".to_string(),
+                role: MessageRole::Assistant,
+                content: vec![ContentBlock::Text {
+                    text: "公".repeat(3_000),
+                }],
+                created_at_ms: 0,
+            },
             usage: None,
             started_at_ms: 1,
             completed_at_ms: 2,

@@ -3521,6 +3521,32 @@ test("keeps the first visible reasoning snapshot when a later delta becomes gene
   await expect(reasoning.locator(".turn-reasoning-segment")).toHaveText("正在");
 });
 
+test("shows the public English reasoning summary emitted by StepFun", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.getByRole("heading", { name: "Phase 6 workbench" })).toBeVisible();
+
+  const stepSummary = "I inspected the relevant files.\n\n```rust\nfn verify_step_summary() {}\n```";
+  await emitDisclosureEvents(page, [
+    { type: "turn_started" },
+    { type: "item_started", itemId: "step-reasoning-public", itemType: "reasoning" },
+    { type: "reasoning_summary_delta", itemId: "step-reasoning-public", delta: stepSummary },
+  ]);
+
+  const reasoning = page.locator(".turn-reasoning");
+  await expect(reasoning).toHaveCount(1);
+  await expect(reasoning.locator(".turn-reasoning-segment")).toContainText("I inspected the relevant files.");
+  await expect(reasoning.locator(".turn-reasoning-segment")).toContainText("fn verify_step_summary() {}");
+
+  // A regular reasoning item with the same English content stays hidden by the
+  // normal safety filter; only the StepFun item namespace opts into this path.
+  await emitDisclosureEvents(page, [
+    { type: "item_started", itemId: "rs-private-english", itemType: "reasoning" },
+    { type: "reasoning_summary_delta", itemId: "rs-private-english", delta: "I inspected the relevant files." },
+  ]);
+  await expect(reasoning).toHaveCount(1);
+  await expect(page.getByText("I inspected the relevant files.", { exact: true })).toHaveCount(1);
+});
+
 test("streams thinking, safe reasoning summaries, compact command states, and file diffs inline", async ({ page, context }, testInfo) => {
   await context.grantPermissions(["clipboard-read", "clipboard-write"]);
   await page.goto("/");
@@ -5627,6 +5653,83 @@ test("undoes pending file review from the message change list", async ({ page })
   await expect(page.locator(".error-banner")).toHaveCount(0);
   await expect(page.locator(".activity-change-main").filter({ hasText: "已撤销" })).toHaveCount(1);
   expect(await page.evaluate(() => (window as unknown as { __invoked: string[] }).__invoked)).toContain("undo_change");
+});
+
+test("continues batch undo after a file conflict and reports the partial result", async ({ page }) => {
+  await page.goto("/");
+  const safeChange = {
+    id: "change-undo-safe",
+    threadId: "thread-1",
+    turnId: "turn-undo-batch",
+    toolCallId: "call-undo-safe",
+    createdAtMs: 2,
+    undone: false,
+    needsReview: true,
+    files: [{
+      path: "src/safe.ts",
+      destinationPath: null,
+      operation: "modify",
+      beforeHash: "before-safe",
+      afterHash: "after-safe",
+      beforeContent: "before\n",
+      afterContent: "after\n",
+      unifiedDiff: "-before\n+after",
+    }],
+  };
+  const conflictedChange = {
+    ...safeChange,
+    id: "change-undo-conflict",
+    toolCallId: "call-undo-conflict",
+    createdAtMs: 3,
+    files: [{
+      ...safeChange.files[0],
+      path: ".tmp-probe/probe3.py",
+      beforeHash: "before-conflict",
+      afterHash: "after-conflict",
+    }],
+  };
+  await page.evaluate(({ safeChange, conflictedChange }) => {
+    const host = window as unknown as {
+      __TAURI_INTERNALS__: { invoke: (command: string, args?: Record<string, unknown>) => Promise<unknown> };
+      __invokedUndoIds: string[];
+      __emitAgentEvent: (event: unknown) => void;
+    };
+    const originalInvoke = host.__TAURI_INTERNALS__.invoke;
+    host.__invokedUndoIds = [];
+    host.__TAURI_INTERNALS__.invoke = async (command, args) => {
+      if (command === "undo_change") {
+        const changeId = String(args?.changeId);
+        host.__invokedUndoIds.push(changeId);
+        if (args?.threadId !== "thread-1") throw new Error("unexpected undo thread");
+        if (changeId === conflictedChange.id) {
+          throw new Error("change cannot be undone: .tmp-probe\\probe3.py changed after the patch was applied");
+        }
+        if (changeId !== safeChange.id) throw new Error("unexpected undo change");
+        return { ...safeChange, undone: true, needsReview: false };
+      }
+      return originalInvoke(command, args);
+    };
+    const emit = host.__emitAgentEvent;
+    const base = { schemaVersion: 11, threadId: "thread-1", turnId: "turn-undo-batch" };
+    emit({ ...base, type: "turn_started", phase: "exploring" });
+    emit({ ...base, type: "change_applied", phase: "executing", changeSet: safeChange });
+    emit({ ...base, type: "change_applied", phase: "executing", changeSet: conflictedChange });
+    emit({ ...base, type: "turn_failed", phase: "failed", message: "provider request failed", error: null, startedAtMs: 1, completedAtMs: 4, durationMs: 3 });
+  }, { safeChange, conflictedChange });
+
+  const message = page.locator(".message--assistant").last();
+  await expect(message.locator(".changes-review-status")).toHaveText("待你确认");
+  await message.locator(".changes-review-actions").getByRole("button", { name: "撤销" }).click();
+
+  await expect(page.locator(".error-banner")).toContainText("已撤销 1 项，1 项未能撤销");
+  await expect(page.locator(".error-banner")).toContainText(".tmp-probe\\probe3.py changed after the patch was applied");
+  await expect(message.locator(".changes-review-status")).toHaveText("待你确认");
+  expect(await page.evaluate(() => (window as unknown as { __invokedUndoIds: string[] }).__invokedUndoIds)).toEqual([
+    "change-undo-conflict",
+    "change-undo-safe",
+  ]);
+  await message.locator(".changes-toggle").click();
+  await expect(message.locator(".message-changes")).toContainText(".tmp-probe/probe3.py");
 });
 
 test("keeps a cancelled turn busy until the terminal event and then retries", async ({ page }) => {

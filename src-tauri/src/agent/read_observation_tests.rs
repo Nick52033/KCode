@@ -244,14 +244,23 @@ async fn distinct_read_coverage_resets_the_productive_progress_guard() {
         .map(|line| format!("line {line}\n"))
         .collect::<String>();
     std::fs::write(directory.path().join("source.txt"), body).unwrap();
-    let script = (0..=MAX_PROVIDER_CALLS_WITHOUT_PRODUCTIVE_PROGRESS)
+    let mut script = (0..=MAX_PROVIDER_CALLS_WITHOUT_PRODUCTIVE_PROGRESS)
         .map(|id| {
             vec![
                 Ok(read_call(id as usize, id as usize + 1, 1)),
                 Ok(ProviderEvent::Completed),
             ]
         })
-        .collect();
+        .collect::<Vec<_>>();
+    // The scripted model answers once every line was observed. Each read
+    // revealed new coverage, so the productive-progress window kept resetting
+    // and the Turn reached its own final answer instead of a guard stop.
+    script.push(vec![
+        Ok(ProviderEvent::TextDelta {
+            delta: "finished reading every line".into(),
+        }),
+        Ok(ProviderEvent::Completed),
+    ]);
     let provider = Arc::new(FakeProvider::script(script));
 
     let outcome = runtime
@@ -269,10 +278,10 @@ async fn distinct_read_coverage_resets_the_productive_progress_guard() {
         .await
         .unwrap();
 
-    assert_ne!(outcome.state, TurnState::Failed, "{outcome:?}");
+    assert_eq!(outcome.state, TurnState::Completed, "{outcome:?}");
     assert_eq!(
         provider.requests().len(),
-        (MAX_PROVIDER_CALLS_WITHOUT_PRODUCTIVE_PROGRESS + 1) as usize
+        (MAX_PROVIDER_CALLS_WITHOUT_PRODUCTIVE_PROGRESS + 2) as usize
     );
 }
 
@@ -414,6 +423,84 @@ fn productive_progress_counts_changes_plan_completion_and_new_verification_resul
     };
     assert!(tracker.observe_tool_result(43, 43, &plan, &plan_result, false));
     assert!(!tracker.observe_tool_result(44, 44, &plan, &plan_result, false));
+}
+
+#[test]
+fn temporary_probe_file_changes_do_not_count_as_productive_progress() {
+    let temporary_paths = [
+        ".tmp/weixin_probe.py",
+        ".tmp-probe/turns.py",
+        "./.TMP/another-probe.py",
+        r".\.Tmp-Probe\nested\probe.py",
+    ];
+
+    for path in temporary_paths {
+        let result = ToolResult {
+            success: true,
+            output: "written".into(),
+            metadata: json!({
+                "changeSet": {"files": [{"path": path}]}
+            }),
+        };
+        assert!(
+            !change_set_has_productive_file_changes(&result),
+            "temporary probe path must not count as productive work: {path}"
+        );
+    }
+
+    let real_file = ToolResult {
+        success: true,
+        output: "written".into(),
+        metadata: json!({
+            "changeSet": {"files": [{"path": "src/weixin.rs"}]}
+        }),
+    };
+    assert!(change_set_has_productive_file_changes(&real_file));
+
+    let move_from_probe_to_source = ToolResult {
+        success: true,
+        output: "moved".into(),
+        metadata: json!({
+            "changeSet": {
+                "files": [{
+                    "path": ".tmp-probe/probe.py",
+                    "destinationPath": "src/probe.rs"
+                }]
+            }
+        }),
+    };
+    assert!(change_set_has_productive_file_changes(&move_from_probe_to_source));
+}
+
+#[test]
+fn repeated_temporary_probe_writes_reach_the_productive_progress_guard() {
+    let mut tracker = ProductiveProgressTracker::default();
+    let call = ToolCall {
+        id: "probe".into(),
+        name: "write_file".into(),
+        arguments: json!({"path": ".tmp-probe/probe.py", "content": "print('probe')"}),
+        metadata: json!({}),
+    };
+
+    for count in 1..=MAX_PROVIDER_CALLS_WITHOUT_PRODUCTIVE_PROGRESS {
+        let result = ToolResult {
+            success: true,
+            output: "written".into(),
+            metadata: json!({
+                "changeSet": {
+                    "files": [{"path": format!(".tmp-probe/probe-{count}.py")}]
+                }
+            }),
+        };
+        assert!(!tracker.observe_tool_result(count, count, &call, &result, false));
+    }
+
+    assert!(tracker
+        .failure_reason(
+            MAX_PROVIDER_CALLS_WITHOUT_PRODUCTIVE_PROGRESS,
+            MAX_PROVIDER_CALLS_WITHOUT_PRODUCTIVE_PROGRESS,
+        )
+        .is_some_and(|reason| reason.contains("模型请求")));
 }
 
 #[test]

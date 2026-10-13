@@ -733,7 +733,10 @@ impl TurnError {
         let normalized = message.to_ascii_lowercase();
         let (code, retryable, category) = if normalized.contains("repeated_observation_loop") {
             ("repeated_observation_loop", true, TurnErrorCategory::Tool)
-        } else if normalized.contains("无实质进展") || normalized.contains("无进展") {
+        } else if normalized.contains("无实质进展")
+            || normalized.contains("没有产生实质进展")
+            || normalized.contains("无进展")
+        {
             ("no_progress_guard", true, TurnErrorCategory::Runtime)
         } else if normalized.contains("provider_call_limit_exceeded")
             || normalized.contains("provider call limit")

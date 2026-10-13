@@ -1,16 +1,12 @@
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
-use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
-use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
 use super::store::{append_json_line, read_json_lines};
-use crate::protocol::{PROTOCOL_VERSION, ToolDefinition, ToolResult};
+use crate::protocol::PROTOCOL_VERSION;
 use crate::storage::now_ms;
-use crate::tools::{ToolContext, ToolError, ToolHandler};
 
 const MAX_MEMORY_CONTENT: usize = 4_000;
 const MAX_ACTIVE_MEMORIES: usize = 100;
@@ -191,80 +187,6 @@ impl MemoryStore {
     }
 }
 
-pub struct RecallMemoryTool {
-    store: MemoryStore,
-}
-impl RecallMemoryTool {
-    pub fn new(store: MemoryStore) -> Self {
-        Self { store }
-    }
-}
-#[async_trait]
-impl ToolHandler for RecallMemoryTool {
-    fn definition(&self) -> ToolDefinition {
-        ToolDefinition {
-            name: "recall_memory".into(),
-            description: "Read user-enabled, unexpired memories with their provenance.".into(),
-            input_schema: json!({"type":"object","properties":{},"additionalProperties":false}),
-        }
-    }
-    async fn execute(
-        &self,
-        _context: &ToolContext,
-        _arguments: Value,
-        _cancellation: CancellationToken,
-    ) -> Result<ToolResult, ToolError> {
-        if !self.store.settings().map_err(ToolError::Execution)?.enabled {
-            return Err(ToolError::Execution(
-                "memory is disabled; enable it explicitly in settings".into(),
-            ));
-        }
-        let memories = self.store.list().map_err(ToolError::Execution)?;
-        Ok(ToolResult {
-            success: true,
-            output: serde_json::to_string(&memories)
-                .map_err(|error| ToolError::Execution(error.to_string()))?,
-            metadata: json!({"count":memories.len()}),
-        })
-    }
-}
-
-pub struct RememberTool {
-    store: MemoryStore,
-}
-impl RememberTool {
-    pub fn new(store: MemoryStore) -> Self {
-        Self { store }
-    }
-}
-#[async_trait]
-impl ToolHandler for RememberTool {
-    fn definition(&self) -> ToolDefinition {
-        ToolDefinition {
-            name: "remember".into(),
-            description: "Save a user-enabled memory with explicit provenance and retention."
-                .into(),
-            input_schema: json!({"type":"object","properties":{"content":{"type":"string","minLength":1,"maxLength":MAX_MEMORY_CONTENT},"source":{"type":"string","minLength":1,"maxLength":240},"retentionDays":{"type":"integer","minimum":1,"maximum":365}},"required":["content","source","retentionDays"],"additionalProperties":false}),
-        }
-    }
-    async fn execute(
-        &self,
-        _context: &ToolContext,
-        arguments: Value,
-        _cancellation: CancellationToken,
-    ) -> Result<ToolResult, ToolError> {
-        let request: MemoryUpsertRequest = serde_json::from_value(arguments)
-            .map_err(|error| ToolError::InvalidArguments(error.to_string()))?;
-        let memory = self.store.upsert(request).map_err(ToolError::Execution)?;
-        Ok(ToolResult {
-            success: true,
-            output: serde_json::to_string(&memory)
-                .map_err(|error| ToolError::Execution(error.to_string()))?,
-            metadata: json!({"memoryId":memory.id}),
-        })
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -279,20 +201,8 @@ mod tests {
             retention_days: 30,
         };
         assert!(store.upsert(request.clone()).is_err());
-        let context = ToolContext {
-            thread_id: "thread".into(),
-            turn_id: "turn".into(),
-            call_id: "call".into(),
-            workspace_root: dir.path().to_path_buf(),
-            approval: None,
-            progress: None,
-            plan_reconciliation: None,
-        };
-        let error = RecallMemoryTool::new(store.clone())
-            .execute(&context, json!({}), CancellationToken::new())
-            .await
-            .unwrap_err();
-        assert!(matches!(error, ToolError::Execution(_)));
+        // The read path honours the same opt-in flag: nothing is injectable while disabled.
+        assert!(store.context().unwrap().is_empty());
         store.set_enabled(true).unwrap();
         let memory = store.upsert(request).unwrap();
         assert_eq!(store.list().unwrap()[0].source, "user instruction");

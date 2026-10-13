@@ -1191,16 +1191,38 @@ mod tests {
         let missing_id = Uuid::new_v4().to_string();
         let secret_id = Uuid::new_v4().to_string();
         repository
-            .upsert(write(&revised_id, "current revision", 5))
+            .append(MemoryEventKind::MemoryUpserted(write(
+                &revised_id,
+                "current revision",
+                5,
+            )))
             .unwrap();
         repository
-            .upsert(write(&deleted_id, "deleted note", 1))
+            .append(MemoryEventKind::MemoryUpserted(write(
+                &deleted_id,
+                "deleted note",
+                1,
+            )))
             .unwrap();
-        repository.set_status(&deleted_id, "deleted").unwrap();
         repository
-            .upsert(write(&archived_id, "archived note", 1))
+            .append(MemoryEventKind::MemoryStatusChanged(MemoryStatusChange {
+                id: deleted_id.to_owned(),
+                status: "deleted".to_owned(),
+            }))
             .unwrap();
-        repository.set_status(&archived_id, "archived").unwrap();
+        repository
+            .append(MemoryEventKind::MemoryUpserted(write(
+                &archived_id,
+                "archived note",
+                1,
+            )))
+            .unwrap();
+        repository
+            .append(MemoryEventKind::MemoryStatusChanged(MemoryStatusChange {
+                id: archived_id.to_owned(),
+                status: "archived".to_owned(),
+            }))
+            .unwrap();
         let legacy = [
             (&revised_id, "obsolete legacy revision"),
             (&deleted_id, "legacy resurrected note"),
@@ -1262,7 +1284,11 @@ mod tests {
             } else {
                 draft.content = "API_KEY=sk-live-abcdefghijklmnop".into();
             }
-            assert!(repository.record_candidate(draft).is_err());
+            assert!(
+                repository
+                    .append(MemoryEventKind::CandidateRecorded(draft))
+                    .is_err()
+            );
         }
         assert!(!data_root.path().join("memory/events.jsonl").exists());
         assert!(
@@ -1279,13 +1305,23 @@ mod tests {
         let repository = repository(data_root.path());
         let memory_id = Uuid::new_v4().to_string();
         let target = write(&memory_id, "old target", 1);
-        repository.upsert(target.clone()).unwrap();
+        repository
+            .append(MemoryEventKind::MemoryUpserted(target.clone()))
+            .unwrap();
         let proposal = candidate(&Uuid::new_v4().to_string(), Some(&target));
         let created = candidate(&Uuid::new_v4().to_string(), None);
-        repository.record_candidate(proposal.clone()).unwrap();
-        repository.record_candidate(created.clone()).unwrap();
         repository
-            .upsert(write(&memory_id, "new target", 2))
+            .append(MemoryEventKind::CandidateRecorded(proposal.clone()))
+            .unwrap();
+        repository
+            .append(MemoryEventKind::CandidateRecorded(created.clone()))
+            .unwrap();
+        repository
+            .append(MemoryEventKind::MemoryUpserted(write(
+                &memory_id,
+                "new target",
+                2,
+            )))
             .unwrap();
         drop(repository);
 
@@ -1314,11 +1350,19 @@ mod tests {
         let repository = repository(data_root.path());
         let memory_id = Uuid::new_v4().to_string();
         let target = write(&memory_id, "old target", 1);
-        repository.upsert(target.clone()).unwrap();
-        let proposal = candidate(&Uuid::new_v4().to_string(), Some(&target));
-        repository.record_candidate(proposal.clone()).unwrap();
         repository
-            .upsert(write(&memory_id, "new target", 2))
+            .append(MemoryEventKind::MemoryUpserted(target.clone()))
+            .unwrap();
+        let proposal = candidate(&Uuid::new_v4().to_string(), Some(&target));
+        repository
+            .append(MemoryEventKind::CandidateRecorded(proposal.clone()))
+            .unwrap();
+        repository
+            .append(MemoryEventKind::MemoryUpserted(write(
+                &memory_id,
+                "new target",
+                2,
+            )))
             .unwrap();
         repository
             .db
@@ -1353,12 +1397,18 @@ mod tests {
         let repository = repository(data_root.path());
         let id = Uuid::new_v4().to_string();
         let first = write(&id, "old target", 1);
-        repository.upsert(first.clone()).unwrap();
+        repository
+            .append(MemoryEventKind::MemoryUpserted(first.clone()))
+            .unwrap();
         let candidate_id = Uuid::new_v4().to_string();
         let mut old = candidate(&candidate_id, Some(&first));
         old.target_revision = None;
-        repository.record_candidate(old).unwrap();
-        repository.upsert(write(&id, "new target", 2)).unwrap();
+        repository
+            .append(MemoryEventKind::CandidateRecorded(old))
+            .unwrap();
+        repository
+            .append(MemoryEventKind::MemoryUpserted(write(&id, "new target", 2)))
+            .unwrap();
         let path = data_root.path().join("memory/events.jsonl");
         let events = fs::read_to_string(&path)
             .unwrap()
@@ -1397,8 +1447,12 @@ mod tests {
         let target = write(&memory_id, "later target", 1);
         let mut proposal = candidate(&Uuid::new_v4().to_string(), Some(&target));
         proposal.target_revision = None;
-        repository.record_candidate(proposal.clone()).unwrap();
-        repository.upsert(target).unwrap();
+        repository
+            .append(MemoryEventKind::CandidateRecorded(proposal.clone()))
+            .unwrap();
+        repository
+            .append(MemoryEventKind::MemoryUpserted(target))
+            .unwrap();
         assert_eq!(
             repository.get_candidate(&proposal.id).unwrap(),
             Some(proposal.clone())
@@ -1416,7 +1470,10 @@ mod tests {
         let repository = repository(data_root.path());
         let candidate_id = Uuid::new_v4().to_string();
         repository
-            .record_candidate(candidate(&candidate_id, None))
+            .append(MemoryEventKind::CandidateRecorded(candidate(
+                &candidate_id,
+                None,
+            )))
             .unwrap();
         repository
             .db
@@ -1479,11 +1536,15 @@ mod tests {
         let repository = repository(data_root.path());
         let memory_id = Uuid::new_v4().to_string();
         let memory = write(&memory_id, "obsolete note", 1);
-        repository.upsert(memory.clone()).unwrap();
+        repository
+            .append(MemoryEventKind::MemoryUpserted(memory.clone()))
+            .unwrap();
         let candidate_id = Uuid::new_v4().to_string();
         let mut proposal = candidate(&candidate_id, Some(&memory));
         proposal.operation = "delete".into();
-        repository.record_candidate(proposal).unwrap();
+        repository
+            .append(MemoryEventKind::CandidateRecorded(proposal))
+            .unwrap();
         repository
             .append(MemoryEventKind::CandidateApplied(CandidateApplied {
                 review: CandidateReview {
@@ -1736,7 +1797,11 @@ mod tests {
         let repository = repository(data_root.path());
         let memory_id = Uuid::new_v4().to_string();
         repository
-            .upsert(write(&memory_id, "durable note", 1))
+            .append(MemoryEventKind::MemoryUpserted(write(
+                &memory_id,
+                "durable note",
+                1,
+            )))
             .unwrap();
         let path = data_root.path().join("memory/events.jsonl");
         let durable = fs::read_to_string(&path).unwrap();
@@ -1745,7 +1810,12 @@ mod tests {
         fs::write(&path, partial).unwrap();
         repository.rebuild_projection().unwrap();
         assert_eq!(fs::read_to_string(&path).unwrap(), durable);
-        repository.set_status(&memory_id, "archived").unwrap();
+        repository
+            .append(MemoryEventKind::MemoryStatusChanged(MemoryStatusChange {
+                id: memory_id.to_owned(),
+                status: "archived".to_owned(),
+            }))
+            .unwrap();
         repository.rebuild_projection().unwrap();
         assert_eq!(
             repository.get(&memory_id).unwrap().unwrap().status,
@@ -1760,14 +1830,23 @@ mod tests {
         let repository = repository(data_root.path());
         let memory_id = Uuid::new_v4().to_string();
         repository
-            .upsert(write(&memory_id, "durable note", 1))
+            .append(MemoryEventKind::MemoryUpserted(write(
+                &memory_id,
+                "durable note",
+                1,
+            )))
             .unwrap();
         let path = data_root.path().join("memory/events.jsonl");
         let log = fs::read_to_string(&path).unwrap();
         fs::write(&path, log.trim_end_matches('\n')).unwrap();
         repository.rebuild_projection().unwrap();
         assert_eq!(fs::read_to_string(&path).unwrap(), log);
-        repository.set_status(&memory_id, "deleted").unwrap();
+        repository
+            .append(MemoryEventKind::MemoryStatusChanged(MemoryStatusChange {
+                id: memory_id.to_owned(),
+                status: "deleted".to_owned(),
+            }))
+            .unwrap();
         repository.rebuild_projection().unwrap();
         assert_eq!(
             repository.get(&memory_id).unwrap().unwrap().status,

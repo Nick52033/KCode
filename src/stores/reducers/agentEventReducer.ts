@@ -15,7 +15,7 @@ import type {
   TurnTimelineItem,
   UserInputRequest,
 } from "../../types/runtime";
-import { selectVisibleReasoningSummary } from "../../lib/reasoningSummary";
+import { isStepFunReasoningItem, selectVisibleReasoningSummary } from "../../lib/reasoningSummary";
 import { mergeConversationAttachments } from "./historyProjection";
 
 const MAX_REASONING_SUMMARY_CHARS = 64 * 1024;
@@ -339,7 +339,11 @@ export function reduceAgentEvent(
                 return {
                   ...item,
                   summary,
-                  visibleSummary: selectVisibleReasoningSummary(summary, item.visibleSummary),
+                  visibleSummary: selectVisibleReasoningSummary(
+                    summary,
+                    item.visibleSummary,
+                    { allowStepFun: isStepFunReasoningItem(item.itemId) },
+                  ),
                   complete: false,
                 };
               })()
@@ -355,7 +359,11 @@ export function reduceAgentEvent(
             itemId: event.itemId,
             turnId: event.turnId,
             summary,
-            visibleSummary: selectVisibleReasoningSummary(summary),
+            visibleSummary: selectVisibleReasoningSummary(
+              summary,
+              undefined,
+              { allowStepFun: isStepFunReasoningItem(event.itemId) },
+            ),
             complete: false,
           }],
         },
@@ -372,14 +380,27 @@ export function reduceAgentEvent(
             ? state.turnTimeline.map((item) => item.type === "reasoning"
                 && item.turnId === event.turnId
                 && item.itemId === event.itemId
-              ? { ...item, summary, visibleSummary: selectVisibleReasoningSummary(summary, item.visibleSummary), complete: true }
+              ? {
+                ...item,
+                summary,
+                visibleSummary: selectVisibleReasoningSummary(
+                  summary,
+                  item.visibleSummary,
+                  { allowStepFun: isStepFunReasoningItem(item.itemId) },
+                ),
+                complete: true,
+              }
               : item)
             : [...state.turnTimeline, {
                 type: "reasoning" as const,
                 itemId: event.itemId,
                 turnId: event.turnId,
                 summary,
-                visibleSummary: selectVisibleReasoningSummary(summary),
+                visibleSummary: selectVisibleReasoningSummary(
+                  summary,
+                  undefined,
+                  { allowStepFun: isStepFunReasoningItem(event.itemId) },
+                ),
                 complete: true,
               }],
         },

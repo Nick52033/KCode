@@ -1096,6 +1096,26 @@ mod tests {
         std::fs::read_to_string(data_root.join("memory/events.jsonl")).unwrap_or_default()
     }
 
+    /// Rebuilds the write payload of an already projected row so a test can append a new revision.
+    fn write_from_record(record: &MemoryRecord) -> MemoryWrite {
+        MemoryWrite {
+            id: record.id.clone(),
+            scope_type: record.scope_type.clone(),
+            scope_id: record.scope_id.clone(),
+            memory_type: record.memory_type.clone(),
+            normalized_key: record.normalized_key.clone(),
+            content: record.content.clone(),
+            source_type: record.source_type.clone(),
+            source_ref: record.source_ref.clone(),
+            confidence: record.confidence,
+            sensitivity: record.sensitivity.clone(),
+            status: record.status.clone(),
+            revision: record.revision.saturating_add(1),
+            expires_at_ms: record.expires_at_ms,
+            created_at_ms: record.created_at_ms,
+        }
+    }
+
     #[test]
     fn upserting_a_new_memory_writes_a_fact_event_and_projects_it() {
         let data_root = tempfile::tempdir().unwrap();
@@ -1970,7 +1990,7 @@ mod tests {
         let id = Uuid::new_v4().to_string();
         service
             .repository
-            .record_candidate(MemoryCandidateRecord {
+            .append(MemoryEventKind::CandidateRecorded(MemoryCandidateRecord {
                 id: id.clone(),
                 operation: "update".into(),
                 target_memory_id: Some(target.id.clone()),
@@ -1987,7 +2007,7 @@ mod tests {
                 source_turn_id: Some(Uuid::new_v4().to_string()),
                 created_at_ms: now_ms(),
                 reviewed_at_ms: None,
-            })
+            }))
             .unwrap();
         let before = fact_log(data_root.path());
         assert_eq!(
@@ -2071,11 +2091,20 @@ mod tests {
                 .unwrap()
                 .memory;
             if status == "active" {
-                let mut write = MemoryWrite::from(memory);
+                let mut write = write_from_record(&memory);
                 write.expires_at_ms = Some(now_ms().saturating_sub(1));
-                service.repository.upsert(write).unwrap();
+                service
+                    .repository
+                    .append(MemoryEventKind::MemoryUpserted(write))
+                    .unwrap();
             } else {
-                service.repository.set_status(&memory.id, status).unwrap();
+                service
+                    .repository
+                    .append(MemoryEventKind::MemoryStatusChanged(MemoryStatusChange {
+                        id: memory.id.clone(),
+                        status: status.to_owned(),
+                    }))
+                    .unwrap();
             }
             let before = fact_log(data_root.path());
             assert!(
