@@ -642,6 +642,53 @@ async fn repeated_reads_with_varied_ranges_still_reach_the_global_no_progress_gu
     );
 }
 
+#[tokio::test]
+async fn no_progress_guard_finishes_after_the_current_tool_batch() {
+    let (_directory, repository, runtime, thread_id) = runtime_fixture().await;
+    let mut events = (0..=MAX_TOOL_CALLS_WITHOUT_PRODUCTIVE_PROGRESS)
+        .map(|id| {
+            Ok(ProviderEvent::ToolCall {
+                call: ToolCall {
+                    id: format!("batch-list-{id}"),
+                    name: "list_directory".into(),
+                    arguments: json!({"path": format!("missing-{id}")}),
+                    metadata: json!({}),
+                },
+            })
+        })
+        .collect::<Vec<_>>();
+    events.push(Ok(ProviderEvent::Completed));
+    let outcome = runtime
+        .run_turn(
+            Arc::new(FakeProvider::script(vec![events])),
+            "fake".into(),
+            RunTurnRequest {
+                thread_id: thread_id.clone(),
+                input: "inspect the workspace".into(),
+                agent_mode: None,
+            },
+            CancellationToken::new(),
+            Arc::new(RecordingPublisher::default()),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(outcome.state, TurnState::Failed, "{outcome:?}");
+    assert!(outcome.error.as_deref().unwrap().contains("无实质进展"));
+    let results = repository
+        .load(&thread_id)
+        .await
+        .unwrap()
+        .into_iter()
+        .filter_map(|event| match event.kind {
+            StoredEventKind::ToolResult { result, .. } => Some(result),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(results.len(), MAX_TOOL_CALLS_WITHOUT_PRODUCTIVE_PROGRESS as usize + 1);
+    assert!(results.iter().all(|result| !result.output.contains("tool execution skipped")));
+}
+
 #[test]
 fn progress_snapshot_compares_merged_read_coverage() {
     let event = |start, end| {

@@ -319,7 +319,7 @@ function GitView() {
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
-  const [busyAction, setBusyAction] = useState<"stage" | "unstage" | "commit" | "pull" | "push" | null>(null);
+  const [busyAction, setBusyAction] = useState<"stage" | "unstage" | "commit" | "pull" | "push" | "restore" | null>(null);
   // 提交按钮放行的瞬间记下当时的索引指纹：提交后每条文件的索引列都会清空，
   // 只有这个指纹才能区分「刚刚提交成功」和「一直没有暂存内容」。
   const [committedIndex, setCommittedIndex] = useState<string | null>(null);
@@ -333,10 +333,11 @@ function GitView() {
   const stagedFingerprint = status ? stagedFilePaths(status.files).join("\n") : "";
   // 指纹一致说明看到的仍是提交前那份状态（刷新还没落地），提示不能提前翻篇。
   const justCommitted = Boolean(committedIndex !== null && committedIndex !== stagedFingerprint);
-  async function action(name: "stage" | "unstage" | "commit" | "pull" | "push", paths: string[] = []) {
+  async function action(name: "stage" | "unstage" | "commit" | "pull" | "push" | "restore", paths: string[] = []) {
     const confirmation = name === "commit" ? `提交当前已暂存的更改？\n\n${message}`
       : name === "pull" ? "从远程拉取并快进当前分支？"
       : name === "push" ? "将当前分支推送到远程？"
+      : name === "restore" ? `还原 ${paths.join("、")}？\n\n已跟踪文件将回到 HEAD，未跟踪文件会被删除；此操作不可撤销。`
       : null;
     if (confirmation && !window.confirm(confirmation)) return;
     setBusyAction(name);
@@ -377,7 +378,7 @@ function GitView() {
     <div className="git-files">{status?.files.map((file) => {
       const nextAction = isGitFileStageable(file) ? "stage" : "unstage";
       const actionLabel = nextAction === "stage" ? "暂存" : "取消暂存";
-      return <div className="git-file" key={file.path}><button type="button" title="查看 Diff" onClick={() => void getGitDiff(file.path, isGitFileStaged(file) && !isGitFileStageable(file)).then(setDiff).catch((reason) => setError(String(reason)))}><span>{file.path}</span><code>{file.indexStatus}{file.worktreeStatus}</code></button><button type="button" disabled={busyAction !== null} title={actionLabel} aria-label={`${actionLabel} ${file.path}`} onClick={() => void action(nextAction, [file.path])}>{nextAction === "stage" ? "+" : "−"}</button></div>;
+      return <div className="git-file" key={file.path}><button type="button" title="查看 Diff" onClick={() => void getGitDiff(file.path, isGitFileStaged(file) && !isGitFileStageable(file)).then(setDiff).catch((reason) => setError(String(reason)))}><span>{file.path}</span><code>{file.indexStatus}{file.worktreeStatus}</code></button><button type="button" disabled={busyAction !== null} title={actionLabel} aria-label={`${actionLabel} ${file.path}`} onClick={() => void action(nextAction, [file.path])}>{nextAction === "stage" ? "+" : "−"}</button><button type="button" disabled={busyAction !== null} title="还原" aria-label={`还原 ${file.path}`} onClick={() => void action("restore", [file.path])}><RotateCcw size={13} /></button></div>;
     })}</div>
     {diff && <pre className="git-diff">{diff}</pre>}
     {status && (status.files.length > 0 || justCommitted) && <div className="git-commit-hint">{status.files.length === 0
@@ -426,8 +427,8 @@ function isGitFileStaged(file: GitStatusView["files"][number]) {
   return file.indexStatus !== " " && file.indexStatus !== "?";
 }
 
-function gitActionSuccessLabel(action: "stage" | "unstage" | "commit" | "pull" | "push") {
-  return action === "stage" ? "更改已暂存" : action === "unstage" ? "已取消暂存" : action === "commit" ? "提交完成" : action === "pull" ? "拉取完成" : "推送完成";
+function gitActionSuccessLabel(action: "stage" | "unstage" | "commit" | "pull" | "push" | "restore") {
+  return action === "stage" ? "更改已暂存" : action === "unstage" ? "已取消暂存" : action === "commit" ? "提交完成" : action === "pull" ? "拉取完成" : action === "restore" ? "已还原" : "推送完成";
 }
 
 /**
@@ -435,10 +436,12 @@ function gitActionSuccessLabel(action: "stage" | "unstage" | "commit" | "pull" |
  * 只是原地完成。后端对这两种无功而返的情况都会返回一句明确说明，这里优先如实
  * 展示它，而不是笼统地报告「推送完成」「拉取完成」。
  */
-function gitActionNotice(action: "stage" | "unstage" | "commit" | "pull" | "push", result: string) {
+function gitActionNotice(action: "stage" | "unstage" | "commit" | "pull" | "push" | "restore", result: string) {
   const detail = result.trim();
   if (action === "push" && detail.startsWith("没有需要推送的提交")) return detail;
   if (action === "pull" && detail.startsWith("没有需要拉取的提交")) return detail;
+  // 还原的分类结果（几个回到 HEAD、几个被删除）由后端按 Git 语义统计，直接展示。
+  if (action === "restore" && detail) return detail;
   return gitActionSuccessLabel(action);
 }
 

@@ -317,13 +317,36 @@ fn existing_file(path: &Path) -> Option<PathBuf> {
 }
 
 fn assess_script(shell_type: ShellType, command: &str) -> CommandAssessment {
-    let Some(parts) = parse_simple_command(shell_type, command) else {
+    if let Some(parts) = parse_simple_command(shell_type, command) {
+        return assess_parts(&parts);
+    }
+
+    let Some(pipeline) = parse_read_only_command_list(shell_type, command) else {
         return CommandAssessment {
             risk: CommandRisk::Write,
             requires_approval: true,
             reason: "shell composition or dynamic syntax requires approval because its effects cannot be proven read-only".into(),
         };
     };
+
+    let assessments = pipeline.iter().map(|parts| assess_parts(parts));
+    let mut risk = CommandRisk::ReadOnly;
+    for assessment in assessments {
+        if assessment.requires_approval {
+            return assessment;
+        }
+        if assessment.risk == CommandRisk::BuildOrTest {
+            risk = CommandRisk::BuildOrTest;
+        }
+    }
+    CommandAssessment {
+        risk,
+        requires_approval: false,
+        reason: "recognized read-only shell pipeline".into(),
+    }
+}
+
+fn assess_parts(parts: &[String]) -> CommandAssessment {
     let Some((program, args)) = parts.split_first() else {
         return CommandAssessment {
             risk: CommandRisk::Write,
@@ -388,6 +411,131 @@ fn parse_simple_command(_shell_type: ShellType, command: &str) -> Option<Vec<Str
         parts.push(current);
     }
     Some(parts)
+}
+
+/// Parse a deliberately narrow shell command list.
+///
+/// A command is only treated as read-only when every stage is later classified
+/// as read-only (or a known build/test command). Composition operators are
+/// limited to sequencing (`;`, `&&`, `||`) and piping (`|`, `2>&1`); they are
+/// safe to accept because each segment is assessed independently and a single
+/// non-read-only stage forces approval for the whole command. Redirects,
+/// command substitution, subshells, and script blocks stay blocked by the
+/// normal approval path.
+fn parse_read_only_command_list(shell_type: ShellType, command: &str) -> Option<Vec<Vec<String>>> {
+    let characters = command.chars().collect::<Vec<_>>();
+    let mut segments = Vec::<Vec<String>>::new();
+    let mut current = String::new();
+    let mut parts = Vec::<String>::new();
+    let mut quote = None;
+    let mut separator_seen = false;
+    let mut index = 0usize;
+
+    let push_current = |current: &mut String, parts: &mut Vec<String>| {
+        if !current.is_empty() {
+            parts.push(std::mem::take(current));
+        }
+    };
+
+    while index < characters.len() {
+        let character = characters[index];
+        match quote {
+            Some(QuoteKind::Single) => {
+                if character == '\'' {
+                    quote = None;
+                } else if matches!(character, '\r' | '\n') {
+                    return None;
+                } else {
+                    current.push(character);
+                }
+                index += 1;
+            }
+            Some(QuoteKind::Double) => {
+                if character == '"' {
+                    quote = None;
+                } else if matches!(character, '$' | '`' | '\r' | '\n') {
+                    return None;
+                } else {
+                    current.push(character);
+                }
+                index += 1;
+            }
+            None => {
+                if character == '\'' {
+                    quote = Some(QuoteKind::Single);
+                    index += 1;
+                    continue;
+                }
+                if character == '"' {
+                    quote = Some(QuoteKind::Double);
+                    index += 1;
+                    continue;
+                }
+                if character.is_whitespace() {
+                    push_current(&mut current, &mut parts);
+                    index += 1;
+                    continue;
+                }
+                if matches!(character, '|' | '&' | ';') {
+                    let width = if characters
+                        .get(index + 1)
+                        .is_some_and(|next| *next == character)
+                    {
+                        2
+                    } else {
+                        1
+                    };
+                    push_current(&mut current, &mut parts);
+                    if parts.is_empty() {
+                        return None;
+                    }
+                    segments.push(std::mem::take(&mut parts));
+                    separator_seen = true;
+                    index += width;
+                    continue;
+                }
+                if characters.get(index..index + 4) == Some(&['2', '>', '&', '1']) {
+                    if !current.is_empty() {
+                        return None;
+                    }
+                    let next = characters.get(index + 4).copied();
+                    if next.is_some_and(|value| {
+                        !value.is_whitespace() && !matches!(value, '|' | '&' | ';')
+                    }) {
+                        return None;
+                    }
+                    separator_seen = true;
+                    index += 4;
+                    continue;
+                }
+                if matches!(character, '>' | '<' | '`' | '$' | '(' | ')' | '{' | '}') {
+                    return None;
+                }
+                #[cfg(windows)]
+                if matches!(character, '%' | '!') && shell_type == ShellType::Cmd {
+                    return None;
+                }
+                current.push(character);
+                index += 1;
+            }
+        }
+    }
+
+    if quote.is_some() {
+        return None;
+    }
+    push_current(&mut current, &mut parts);
+    if parts.is_empty() {
+        return None;
+    }
+    segments.push(parts);
+    separator_seen.then_some(segments)
+}
+
+#[derive(Clone, Copy)]
+enum QuoteKind {
+    Single,
+    Double,
 }
 
 #[cfg(test)]
@@ -626,6 +774,76 @@ mod tests {
 
         #[cfg(windows)]
         assert!(assess_script(ShellType::Cmd, "echo %TEMP%").requires_approval);
+    }
+
+    #[test]
+    fn read_only_shell_pipelines_do_not_require_approval() {
+        let shell_type = platform_shell_type();
+        for command in [
+            "rg -n requires_approval src-tauri/src | Select-Object -First 20",
+            "Get-Content Cargo.toml | Select-Object -First 20",
+            "git status --short | Select-Object -First 20",
+            "rg -n requires_approval src-tauri/src | rg -v target | Select-Object -First 20",
+            "rg -n requires_approval src-tauri/src 2>&1 | Select-Object -First 20",
+        ] {
+            let assessment = assess_script(shell_type, command);
+            assert_eq!(assessment.risk, CommandRisk::ReadOnly, "{command}");
+            assert!(!assessment.requires_approval, "{command}");
+        }
+    }
+
+    #[test]
+    fn shell_pipelines_still_require_approval_when_a_stage_can_write_or_is_dynamic() {
+        let shell_type = platform_shell_type();
+        for command in [
+            "Get-Content Cargo.toml | Set-Content copy.toml",
+            "rg -n TODO src | Remove-Item target",
+            "rg -n TODO $(Get-Content query.txt) | Select-Object -First 20",
+            "rg -n TODO src | Select-Object -First 20 > output.txt",
+        ] {
+            assert!(
+                assess_script(shell_type, command).requires_approval,
+                "{command}"
+            );
+        }
+    }
+
+    #[test]
+    fn sequenced_read_only_command_lists_do_not_require_approval() {
+        let shell_type = platform_shell_type();
+        for command in [
+            "git status; git diff",
+            "git status && git diff",
+            "git status || git diff",
+            "pwd; ls",
+            "git status --short; Get-Content Cargo.toml",
+            "git status && git diff && git log",
+            "git status 2>&1",
+            "rg -n TODO src | Select-Object -First 20; git status",
+        ] {
+            let assessment = assess_script(shell_type, command);
+            assert_eq!(assessment.risk, CommandRisk::ReadOnly, "{command}");
+            assert!(!assessment.requires_approval, "{command}");
+        }
+    }
+
+    #[test]
+    fn sequenced_command_lists_require_approval_when_any_stage_can_write() {
+        let shell_type = platform_shell_type();
+        for command in [
+            "git status; Remove-Item target",
+            "git status && Remove-Item target",
+            "pwd || Remove-Item target",
+            "git status; curl https://example.com",
+            "git status; bash -c 'echo hi'",
+            "git status; echo hi > output.txt",
+            "git status; rg --pre=cat needle",
+        ] {
+            assert!(
+                assess_script(shell_type, command).requires_approval,
+                "{command}"
+            );
+        }
     }
 
     #[test]

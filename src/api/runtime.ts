@@ -524,7 +524,7 @@ export function getGitBranches() { return invoke<GitBranchView>("git_branches");
 export function switchGitBranch(branch: string, create: boolean, confirmed: boolean) {
   return invoke<string>("git_switch_branch", { branch, create, confirmed });
 }
-export function runGitAction(action: "stage" | "unstage" | "commit" | "pull" | "push", paths: string[] = [], message?: string, confirmed = false) {
+export function runGitAction(action: "stage" | "unstage" | "commit" | "pull" | "push" | "restore", paths: string[] = [], message?: string, confirmed = false) {
   return invoke<string>("git_action", { action, paths, message, confirmed });
 }
 

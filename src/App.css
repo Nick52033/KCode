@@ -5902,7 +5902,7 @@ button {
 .branch-controls { display: grid; padding: 6px 7px; grid-template-columns: minmax(0,1fr) 28px; gap: 5px; border-bottom: 1px solid var(--color-border); }
 .branch-controls select { min-width: 0; height: 28px; padding: 0 7px; border: 1px solid var(--color-border); border-radius: 5px; color: var(--color-ink); background: var(--color-surface); font-size: var(--font-size-sm); }
 .branch-controls button { display: grid; width: 28px; height: 28px; padding: 0; place-items: center; border: 1px solid var(--color-border); border-radius: 5px; color: var(--color-ink); background: var(--color-surface); cursor: pointer; }
-.git-file { display: grid; grid-template-columns: minmax(0,1fr) 27px; border-bottom: 1px solid var(--color-border); }
+.git-file { display: grid; grid-template-columns: minmax(0,1fr) 27px 27px; border-bottom: 1px solid var(--color-border); }
 .git-file button { min-width: 0; min-height: 31px; border: 0; background: transparent; cursor: pointer; }
 .git-file button:first-child { display: flex; padding: 0 8px; align-items: center; justify-content: space-between; gap: 6px; text-align: left; }
 .git-file button:hover { background: var(--color-surface-hover); }

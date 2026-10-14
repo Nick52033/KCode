@@ -374,6 +374,15 @@ mod tests {
             ),
             PolicyDecision::Allow
         );
+        assert_eq!(
+            policy.authorize(
+                "run_command",
+                &serde_json::json!({
+                    "command": "rg -n requires_approval src-tauri/src | Select-Object -First 20"
+                }),
+            ),
+            PolicyDecision::Allow
+        );
         assert!(matches!(
             policy.authorize(
                 "run_command",

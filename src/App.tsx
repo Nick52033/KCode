@@ -1270,7 +1270,6 @@ function App() {
     && currentThreadTurnId
     && cancellingTurns[activeThreadId] === currentThreadTurnId,
   );
-  const anyTurnBusy = Object.keys(activeTurns).length > 0;
   const retryable = !currentThreadBusy && ["failed", "cancelled"].includes(lastTurn?.state ?? "");
   const selectedThreadProvider = useMemo(() => {
     if (!threadModelSelection) return providerConfig;
@@ -3216,7 +3215,7 @@ function App() {
                   projects={selectableProjects}
                   activeProject={activeProject}
                   standalone={activeThreadIsStandalone}
-                  disabled={anyTurnBusy}
+                  disabled={workspaceSwitching}
                   switching={workspaceSwitching}
                   onSelect={selectComposerProject}
                   onCreateProject={pickProjectForComposer}
@@ -3344,7 +3343,7 @@ function App() {
               <div className="composer-actions">
                 <ApprovalModeSelector
                   mode={approvalMode}
-                  disabled={anyTurnBusy}
+                  disabled={workspaceSwitching}
                   onChange={setApprovalMode}
                 />
                 <ContextProgress

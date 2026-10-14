@@ -3267,11 +3267,24 @@ test("reports system opener failures inside the file preview", async ({ page }) 
 test("creates a standalone conversation from the lower-left project menu", async ({ page }, testInfo) => {
   await page.goto("/", { waitUntil: "domcontentloaded" });
   const composer = page.locator(".composer");
-  await composer.getByRole("button", { name: "当前项目 KCode" }).click();
+  const projectTrigger = composer.getByRole("button", { name: "当前项目 KCode" });
+  await page.evaluate(() => {
+    (window as unknown as { __emitAgentEvent: (event: unknown) => void }).__emitAgentEvent({
+      schemaVersion: 1,
+      threadId: "thread-2",
+      turnId: "other-thread-turn",
+      phase: "executing",
+      type: "turn_started",
+    });
+  });
+  await expect(projectTrigger).toBeEnabled();
+  await projectTrigger.click();
 
   const dialog = page.getByRole("dialog", { name: "选择项目" });
   const standalone = dialog.getByRole("button", { name: "不在项目中", exact: true });
   await expect(standalone).toBeVisible();
+  await expect(dialog.getByRole("option").first()).toBeDisabled();
+  await expect(standalone).toBeEnabled();
   await expect(standalone).toHaveAttribute("aria-pressed", "false");
   const [dialogBox, standaloneBox] = await Promise.all([dialog.boundingBox(), standalone.boundingBox()]);
   expect(dialogBox).not.toBeNull();
@@ -6866,6 +6879,16 @@ test("switches the runtime approval mode from the composer", async ({ page }, te
 
   await expect(trigger).toHaveAttribute("aria-label", "操作批准方式：请求批准");
   await expect(trigger).not.toContainText("请求批准");
+  await page.evaluate(() => {
+    (window as unknown as { __emitAgentEvent: (event: unknown) => void }).__emitAgentEvent({
+      schemaVersion: 1,
+      threadId: "thread-2",
+      turnId: "other-thread-turn",
+      phase: "executing",
+      type: "turn_started",
+    });
+  });
+  await expect(trigger).toBeEnabled();
   await trigger.click();
   await expect(menu).toBeVisible();
   await expectMenuWithinComposer();

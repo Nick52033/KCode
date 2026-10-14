@@ -664,10 +664,6 @@ impl AppState {
         &self,
         mode: ApprovalMode,
     ) -> Result<ApprovalMode, AppStateError> {
-        let active_turns = self.active_turns.lock().await;
-        if !active_turns.is_empty() || self.subagents.has_active() {
-            return Err(AppStateError::ApprovalModeBusy);
-        }
         self.repository
             .projection()
             .set_setting(
@@ -680,7 +676,6 @@ impl AppState {
             .approval_mode
             .write()
             .map_err(|_| AppStateError::ApprovalModeLock)? = mode;
-        drop(active_turns);
         Ok(mode)
     }
 
@@ -2403,8 +2398,6 @@ pub enum AppStateError {
     },
     #[error("thread {0} is not associated with a project workspace")]
     ThreadHasNoWorkspace(String),
-    #[error("stop active turns and subagents before changing the approval mode")]
-    ApprovalModeBusy,
     #[error("approval mode lock poisoned")]
     ApprovalModeLock,
     #[error("reasoning effort lock poisoned")]
@@ -3796,7 +3789,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn approval_mode_persists_and_cannot_change_during_a_turn() {
+    async fn approval_mode_persists_and_applies_to_future_turns_while_another_turn_runs() {
         let directory = tempfile::tempdir().expect("temporary directory should be created");
         let credentials = Arc::new(FakeCredentials::default());
         let state = AppState::with_credentials(directory.path(), credentials.clone())
@@ -3805,11 +3798,6 @@ mod tests {
         let thread_id = Uuid::new_v4().to_string();
         assert_eq!(state.approval_mode(), ApprovalMode::Ask);
         state.begin_turn(&thread_id).await.expect("turn starts");
-        assert!(matches!(
-            state.set_approval_mode(ApprovalMode::FullAccess).await,
-            Err(AppStateError::ApprovalModeBusy)
-        ));
-        state.finish_turn(&thread_id).await;
         assert_eq!(
             state
                 .set_approval_mode(ApprovalMode::FullAccess)
@@ -3817,6 +3805,8 @@ mod tests {
                 .unwrap(),
             ApprovalMode::FullAccess
         );
+        assert_eq!(state.approval_mode(), ApprovalMode::FullAccess);
+        state.finish_turn(&thread_id).await;
 
         let restored = AppState::with_credentials(directory.path(), credentials)
             .expect("state should restore");

@@ -691,7 +691,8 @@ pub fn git_action(
     message: Option<&str>,
     confirmed: bool,
 ) -> Result<String, WorkbenchError> {
-    let allowed = HashSet::from(["stage", "unstage", "commit", "pull", "push"]);
+    // restore 会丢弃未提交改动、删除未跟踪文件，和 commit/pull/push 一样必须显式确认。
+    let allowed = HashSet::from(["stage", "unstage", "commit", "pull", "push", "restore"]);
     if !allowed.contains(action) {
         return Err(WorkbenchError::Invalid(
             "destructive Git actions require a separate approval flow".into(),
@@ -700,7 +701,7 @@ pub fn git_action(
     for path in paths {
         validate_relative(path)?;
     }
-    if matches!(action, "commit" | "pull" | "push") && !confirmed {
+    if matches!(action, "commit" | "pull" | "push" | "restore") && !confirmed {
         return Err(WorkbenchError::Invalid(format!(
             "Git {action} requires explicit confirmation"
         )));
@@ -809,6 +810,37 @@ pub fn git_action(
                 })?;
                 git(root, &["push", "--set-upstream", "origin", branch])
             }
+        }
+        "restore" => {
+            // 还原丢弃的是未提交改动：已跟踪文件回到 HEAD，未跟踪文件直接删除。
+            // 破坏性已由上面的 confirmed 门禁拦过一次；这里按 Git 语义逐路径分类，
+            // 避免把未跟踪路径喂给 checkout——pathspec 不匹配会让整条命令失败。
+            if paths.is_empty() {
+                // 不带路径即还原全部：已跟踪改动回到 HEAD，未跟踪文件全部删除。
+                git(root, &["checkout", "HEAD", "--", "."])?;
+                git(root, &["clean", "-fd"])?;
+                return Ok("已还原全部改动：已跟踪文件回到 HEAD，未跟踪文件已删除".to_string());
+            }
+            let mut restored = 0_usize;
+            let mut removed = 0_usize;
+            for path in paths {
+                if git(root, &["cat-file", "-e", &format!("HEAD:{path}")]).is_ok() {
+                    // HEAD 里存在：索引和工作区一起回到 HEAD，已暂存的改动也随之丢弃。
+                    git(root, &["checkout", "HEAD", "--", path])?;
+                    restored += 1;
+                } else if git(root, &["ls-files", "--error-unmatch", "--", path]).is_ok() {
+                    // 只在索引里（已暂存的新文件）：HEAD 中没有它，还原即移出索引并删除。
+                    git(root, &["rm", "-f", "--", path])?;
+                    removed += 1;
+                } else {
+                    // 未跟踪文件：显式 pathspec 只删这一项，不会碰到 ignored 文件。
+                    git(root, &["clean", "-fd", "--", path])?;
+                    removed += 1;
+                }
+            }
+            Ok(format!(
+                "已还原 {restored} 个已跟踪文件，删除 {removed} 个未提交文件"
+            ))
         }
         _ => unreachable!(),
     }
@@ -1271,6 +1303,95 @@ mod tests {
             git_branches(root.path()).unwrap().current.as_deref(),
             Some("feature/test")
         );
+    }
+
+    /// 还原是破坏性操作：没有显式确认必须拒绝；确认后按 Git 语义丢弃未提交改动。
+    #[test]
+    fn git_restore_requires_confirmation_and_discards_uncommitted_changes() {
+        let root = tempfile::tempdir().unwrap();
+        init_repository(root.path());
+        std::fs::write(root.path().join("tracked.txt"), "first\n").unwrap();
+        git_action(root.path(), "stage", &[], None, false).unwrap();
+        git_action(root.path(), "commit", &[], Some("initial"), true).unwrap();
+
+        // 与 commit/pull/push 一样：未确认的还原必须被拒绝。
+        assert!(git_action(root.path(), "restore", &["tracked.txt".into()], None, false).is_err());
+
+        std::fs::write(root.path().join("tracked.txt"), "modified\n").unwrap();
+        std::fs::write(root.path().join("untracked.txt"), "new\n").unwrap();
+        std::fs::write(root.path().join("staged-new.txt"), "staged\n").unwrap();
+        git_action(
+            root.path(),
+            "stage",
+            &["staged-new.txt".into()],
+            None,
+            false,
+        )
+        .unwrap();
+
+        git_action(
+            root.path(),
+            "restore",
+            &[
+                "tracked.txt".into(),
+                "untracked.txt".into(),
+                "staged-new.txt".into(),
+            ],
+            None,
+            true,
+        )
+        .unwrap();
+
+        // 已跟踪文件回到 HEAD 内容，未跟踪文件被删除，暂存的新文件移出索引并删除。
+        assert_eq!(
+            std::fs::read_to_string(root.path().join("tracked.txt"))
+                .unwrap()
+                .replace("\r\n", "\n"),
+            "first\n"
+        );
+        assert!(!root.path().join("untracked.txt").exists());
+        assert!(!root.path().join("staged-new.txt").exists());
+        let staged = git(root.path(), &["diff", "--cached", "--name-only"]).unwrap();
+        assert!(staged.trim().is_empty(), "index must be clean: {staged}");
+    }
+
+    /// 不带路径的还原等于「全部还原」：所有已跟踪改动回 HEAD，未跟踪文件清空。
+    #[test]
+    fn git_restore_without_paths_discards_everything() {
+        let root = tempfile::tempdir().unwrap();
+        init_repository(root.path());
+        std::fs::write(root.path().join("tracked.txt"), "first\n").unwrap();
+        git_action(root.path(), "stage", &[], None, false).unwrap();
+        git_action(root.path(), "commit", &[], Some("initial"), true).unwrap();
+
+        std::fs::write(root.path().join("tracked.txt"), "modified\n").unwrap();
+        std::fs::write(root.path().join("untracked.txt"), "new\n").unwrap();
+        git_action(root.path(), "restore", &[], None, true).unwrap();
+
+        assert_eq!(
+            std::fs::read_to_string(root.path().join("tracked.txt"))
+                .unwrap()
+                .replace("\r\n", "\n"),
+            "first\n"
+        );
+        assert!(!root.path().join("untracked.txt").exists());
+    }
+
+    /// 安全分支：还原同样必须拒绝工作区之外的路径。
+    #[test]
+    fn git_restore_rejects_paths_outside_the_workspace() {
+        let root = tempfile::tempdir().unwrap();
+        init_repository(root.path());
+        assert!(matches!(
+            git_action(
+                root.path(),
+                "restore",
+                &["../outside.txt".into()],
+                None,
+                true
+            ),
+            Err(WorkbenchError::Invalid(_))
+        ));
     }
 
     #[test]

@@ -2708,11 +2708,6 @@ impl AgentRuntime {
             let mut fatal_error = None;
             for call in pending_tool_calls {
                 tool_call_count = tool_call_count.saturating_add(1);
-                if let Some(reason) =
-                    productive_progress.failure_reason(provider_call_index, tool_call_count)
-                {
-                    stop_reason = Some(reason);
-                }
                 let signature = call_signature(&call);
                 if last_call_signature.as_deref() == Some(signature.as_str()) {
                     identical_call_streak = identical_call_streak.saturating_add(1);
