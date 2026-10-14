@@ -155,6 +155,7 @@ function WelcomeGlyph({ size = 48 }: { size?: number }) {
 const THREAD_PROJECT_KEY = "kcode_thread_project_map";
 const KNOWN_PROJECTS_KEY = "kcode_known_projects";
 const HIDDEN_PROJECT_GROUPS_KEY = "kcode_hidden_project_groups";
+const WORKSPACE_RENAME_MIGRATION_KEY = "kcode_workspace_rename_migration_v1";
 const appWindow = getCurrentWindow();
 
 const MAX_COMPOSER_ATTACHMENTS = 8;
@@ -284,6 +285,66 @@ function readThreadProjectMap(): Record<string, string> {
     return {};
   }
 }
+
+/**
+ * Keep the browser-side project grouping state in step with the k-coder → KCode
+ * data migration. The database/session bindings are authoritative, but the
+ * desktop sidebar also persists paths in WebView localStorage. Older builds
+ * could leave the renamed workspaces in the hidden-project set, which makes a
+ * successfully restored project and all of its conversations appear missing.
+ * Run this once so a later, intentional hide of KCode is respected.
+ */
+function migrateRenamedWorkspaceState(): void {
+  try {
+    if (localStorage.getItem(WORKSPACE_RENAME_MIGRATION_KEY) === "1") return;
+
+    const replacements: Array<[string, string]> = [
+      ["D:/code/Nick/k-coder", "D:/code/Nick/KCode"],
+      ["D:/apps/k-coder", "D:/apps/KCode"],
+    ];
+    const migratePath = (value: string): string => {
+      const normalized = value.replace(/\\/g, "/");
+      const comparable = normalized.replace(/^\/\/\?\//i, "");
+      const replacement = replacements.find(([oldPath]) =>
+        comparable.toLocaleLowerCase() === oldPath.toLocaleLowerCase()
+        || comparable.toLocaleLowerCase().startsWith(`${oldPath.toLocaleLowerCase()}/`),
+      );
+      if (!replacement) return value;
+      return replacement[1] + comparable.slice(replacement[0].length);
+    };
+    const readJson = <T,>(key: string, fallback: T): T => {
+      const raw = localStorage.getItem(key);
+      if (!raw) return fallback;
+      try { return JSON.parse(raw) as T; } catch { return fallback; }
+    };
+
+    const known = readJson<string[]>(KNOWN_PROJECTS_KEY, []);
+    localStorage.setItem(KNOWN_PROJECTS_KEY, JSON.stringify(
+      [...new Set(known.map(migratePath))],
+    ));
+
+    const hidden = readJson<string[]>(HIDDEN_PROJECT_GROUPS_KEY, []);
+    const migratedRoots = new Set(replacements.map(([, next]) => workspacePathKey(next)));
+    localStorage.setItem(HIDDEN_PROJECT_GROUPS_KEY, JSON.stringify(
+      [...new Set(hidden.map(migratePath))].filter((path) => !migratedRoots.has(workspacePathKey(path))),
+    ));
+
+    const threadMap = readJson<Record<string, string>>(THREAD_PROJECT_KEY, {});
+    localStorage.setItem(THREAD_PROJECT_KEY, JSON.stringify(
+      Object.fromEntries(Object.entries(threadMap).map(([id, path]) => [id, migratePath(path)])),
+    ));
+
+    const pinned = readJson<string[]>("kcode_pinned_projects", []);
+    localStorage.setItem("kcode_pinned_projects", JSON.stringify(
+      [...new Set(pinned.map(migratePath))],
+    ));
+    localStorage.setItem(WORKSPACE_RENAME_MIGRATION_KEY, "1");
+  } catch {
+    // localStorage is best-effort; server-side project/session data remains authoritative.
+  }
+}
+
+migrateRenamedWorkspaceState();
 
 function readStored<T>(key: string, fallback: T): T {
   try {

@@ -1,6 +1,8 @@
 #[cfg(not(test))]
 const SERVICE_NAME: &str = "com.kcode.app";
 #[cfg(not(test))]
+const LEGACY_SERVICE_NAME: &str = "com.kcoder.app";
+#[cfg(not(test))]
 const LEGACY_API_KEY_ACCOUNT: &str = "default-provider-api-key";
 
 pub trait CredentialStore: Send + Sync {
@@ -30,7 +32,12 @@ impl OsCredentialStore {
 
     #[cfg(not(test))]
     fn entry(&self, account: &str) -> Result<keyring::Entry, CredentialError> {
-        keyring::Entry::new(SERVICE_NAME, account)
+        Self::entry_for_service(SERVICE_NAME, account)
+    }
+
+    #[cfg(not(test))]
+    fn entry_for_service(service: &str, account: &str) -> Result<keyring::Entry, CredentialError> {
+        keyring::Entry::new(service, account)
             .map_err(|error| CredentialError::Unavailable(error.to_string()))
     }
 
@@ -41,7 +48,16 @@ impl OsCredentialStore {
 
     #[cfg(not(test))]
     fn read_entry(&self, account: &str) -> Result<Option<String>, CredentialError> {
-        match self.entry(account)?.get_password() {
+        self.read_entry_for_service(SERVICE_NAME, account)
+    }
+
+    #[cfg(not(test))]
+    fn read_entry_for_service(
+        &self,
+        service: &str,
+        account: &str,
+    ) -> Result<Option<String>, CredentialError> {
+        match Self::entry_for_service(service, account)?.get_password() {
             Ok(value) => Ok(Some(value)),
             Err(keyring::Error::NoEntry) => Ok(None),
             Err(error) => Err(CredentialError::Unavailable(error.to_string())),
@@ -64,10 +80,40 @@ impl CredentialStore for OsCredentialStore {
             CredentialError::Unavailable("credential lock was poisoned".to_string())
         })?;
         let credential = self.read_entry(&Self::account(provider_id))?;
-        if credential.is_some() || provider_id != "default" {
-            return Ok(credential);
+        if let Some(value) = credential {
+            return Ok(Some(value));
         }
-        self.read_entry(LEGACY_API_KEY_ACCOUNT)
+        if provider_id == "default" {
+            if let Some(value) = self.read_entry(LEGACY_API_KEY_ACCOUNT)? {
+                return Ok(Some(value));
+            }
+        }
+
+        // The application was renamed from k-coder to KCode. Preserve access to
+        // credentials written by the old installation and copy them into the
+        // new service on first read. The secret never leaves the OS credential
+        // store or appears in the returned provider view.
+        let legacy_account = Self::account(provider_id);
+        let legacy = self
+            .read_entry_for_service(LEGACY_SERVICE_NAME, &legacy_account)?
+            .or_else(|| {
+                if provider_id == "default" {
+                    self.read_entry_for_service(LEGACY_SERVICE_NAME, LEGACY_API_KEY_ACCOUNT)
+                        .ok()
+                        .flatten()
+                } else {
+                    None
+                }
+            });
+        if let Some(value) = legacy {
+            let _ = self.entry(&legacy_account).and_then(|entry| {
+                entry
+                    .set_password(&value)
+                    .map_err(|error| CredentialError::Unavailable(error.to_string()))
+            });
+            return Ok(Some(value));
+        }
+        Ok(None)
     }
 
     fn set_api_key(&self, provider_id: &str, api_key: &str) -> Result<(), CredentialError> {
