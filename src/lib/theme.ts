@@ -36,7 +36,7 @@ export interface ThemeOption {
   swatch: [string, string];
 }
 
-export const THEME_STORAGE_KEY = "kcoder_theme";
+export const THEME_STORAGE_KEY = "kcode_theme";
 
 export const THEME_OPTIONS: ThemeOption[] = [
   { id: "light", label: "浅色", description: "清晰明亮", icon: "sun", swatch: ["#ffffff", "#365cce"] },

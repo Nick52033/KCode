@@ -13,7 +13,7 @@ const { createServer } = require('node:http');
   try {
     const page = browser.contexts()[0].pages().find(p => p.url().includes(':1459'));
     if (!page) throw new Error('Isolated panel resize WebView missing');
-    await page.evaluate(() => localStorage.removeItem('kcoder_panel_widths_v1'));
+    await page.evaluate(() => localStorage.removeItem('kcode_panel_widths_v1'));
     await page.reload();
     await expect(page.getByText('运行时就绪', { exact: true })).toBeVisible();
     await page.getByRole('button', { name: '工作台', exact: true }).click();

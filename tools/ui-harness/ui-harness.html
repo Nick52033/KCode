@@ -10,7 +10,7 @@
         var params = new URLSearchParams(location.search);
         var theme = params.get("theme");
         try {
-          if (theme) localStorage.setItem("kcoder_theme", theme);
+          if (theme) localStorage.setItem("kcode_theme", theme);
         } catch (_) {}
         var stored = theme || "light";
         var root = document.documentElement;

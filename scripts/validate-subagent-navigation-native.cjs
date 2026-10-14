@@ -22,7 +22,7 @@ const path = require('node:path');
     browser = await chromium.connectOverCDP('http://127.0.0.1:9391');
     page = browser.contexts()[0].pages().find(p => p.url().includes(':1451'));
     if (!page) throw new Error('Isolated validation WebView was not found');
-    await page.evaluate(() => localStorage.removeItem('kcoder_hidden_project_groups'));
+    await page.evaluate(() => localStorage.removeItem('kcode_hidden_project_groups'));
     await page.reload();
     await expect(page.getByText('运行时就绪', { exact: true })).toBeVisible();
     const fixture = await page.evaluate(async ({ baseUrl, parentTitle, childTitle }) => {
@@ -64,7 +64,7 @@ const path = require('node:path');
     await expect(projects.locator('.thread-item-main')).toHaveCount(1);
     await expect(group.locator('.project-group-count')).toHaveText('1');
     // Hidden project groups return parents to the conversation list, never children.
-    await page.evaluate(({ workspacePath }) => localStorage.setItem('kcoder_hidden_project_groups', JSON.stringify([workspacePath])), fixture);
+    await page.evaluate(({ workspacePath }) => localStorage.setItem('kcode_hidden_project_groups', JSON.stringify([workspacePath])), fixture);
     await page.reload();
     const conversations = page.getByRole('navigation', { name: '会话列表' });
     await expect(conversations.locator('.thread-item-main').filter({ hasText: parentTitle })).toHaveCount(1);

@@ -11,7 +11,7 @@
         var THEMES = ["light", "dark", "arctic", "crt-green", "ember", "miami", "synthwave", "terminal", "vapor", "system"];
         var stored = "light";
         try {
-          stored = localStorage.getItem("kcoder_theme") || "light";
+          stored = localStorage.getItem("kcode_theme") || localStorage.getItem("kcoder_theme") || "light";
         } catch (_) {
           stored = "light";
         }

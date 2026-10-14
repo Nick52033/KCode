@@ -152,9 +152,9 @@ function WelcomeGlyph({ size = 48 }: { size?: number }) {
   );
 }
 
-const THREAD_PROJECT_KEY = "kcoder_thread_project_map";
-const KNOWN_PROJECTS_KEY = "kcoder_known_projects";
-const HIDDEN_PROJECT_GROUPS_KEY = "kcoder_hidden_project_groups";
+const THREAD_PROJECT_KEY = "kcode_thread_project_map";
+const KNOWN_PROJECTS_KEY = "kcode_known_projects";
+const HIDDEN_PROJECT_GROUPS_KEY = "kcode_hidden_project_groups";
 const appWindow = getCurrentWindow();
 
 const MAX_COMPOSER_ATTACHMENTS = 8;
@@ -373,11 +373,11 @@ function App() {
   const [themeMode, setThemeModeState] = useState<ThemeId>(() =>
     parseThemePreference(readStored<string>(THEME_STORAGE_KEY, "light")),
   );
-  const [backgroundEnabled, setBackgroundEnabled] = useState(() => localStorage.getItem("kcoder_background_enabled") !== "false");
-  const [backgroundImage, setBackgroundImage] = useState(() => localStorage.getItem("kcoder_background_image") || "/chat-background.png");
+  const [backgroundEnabled, setBackgroundEnabled] = useState(() => localStorage.getItem("kcode_background_enabled") !== "false");
+  const [backgroundImage, setBackgroundImage] = useState(() => localStorage.getItem("kcode_background_image") || "/chat-background.png");
   const [backgroundOpacity, setBackgroundOpacity] = useState(() => {
     // 缺省白纱从 18% 收到 10%：配合更透明的面板，让内置背景图一上手就清晰可见。
-    const stored = Number(localStorage.getItem("kcoder_background_opacity") ?? "0.10");
+    const stored = Number(localStorage.getItem("kcode_background_opacity") ?? "0.10");
     if (!Number.isFinite(stored)) return 0.10;
     // 旧版本把该值当作“白纱厚度”，遗留值可高达 0.85，会把背景图整块盖住。
     return Math.min(Math.max(stored, 0), 0.6);
@@ -409,7 +409,7 @@ function App() {
   const [projectMenuOpen, setProjectMenuOpen] = useState<string | null>(null);
   const [pinnedProjects, setPinnedProjects] = useState<Set<string>>(() => {
     try {
-      return new Set(JSON.parse(localStorage.getItem("kcoder_pinned_projects") ?? "[]") as string[]);
+      return new Set(JSON.parse(localStorage.getItem("kcode_pinned_projects") ?? "[]") as string[]);
     } catch { return new Set<string>(); }
   });
   const [agentMode, setAgentMode] = useState<"craft" | "ask" | "plan">("craft");
@@ -733,9 +733,9 @@ function App() {
     // 明暗分流标记：背景图与墨色的处理方式在深浅色调下相反（见 App.css 的 .workbench--background）。
     document.documentElement.setAttribute("data-tone", isDarkResolvedTheme(resolvedTheme) ? "dark" : "light");
   }, [resolvedTheme, themeMode]);
-  useEffect(() => { localStorage.setItem("kcoder_background_enabled", String(backgroundEnabled)); }, [backgroundEnabled]);
-  useEffect(() => { if (backgroundImage.startsWith("data:image/")) localStorage.setItem("kcoder_background_image", backgroundImage); else localStorage.removeItem("kcoder_background_image"); }, [backgroundImage]);
-  useEffect(() => { localStorage.setItem("kcoder_background_opacity", String(backgroundOpacity)); }, [backgroundOpacity]);
+  useEffect(() => { localStorage.setItem("kcode_background_enabled", String(backgroundEnabled)); }, [backgroundEnabled]);
+  useEffect(() => { if (backgroundImage.startsWith("data:image/")) localStorage.setItem("kcode_background_image", backgroundImage); else localStorage.removeItem("kcode_background_image"); }, [backgroundImage]);
+  useEffect(() => { localStorage.setItem("kcode_background_opacity", String(backgroundOpacity)); }, [backgroundOpacity]);
 
   // ===== 线程-项目关联管理 =====
   const saveThreadProjectMap = (map: Record<string, string>) => {
@@ -1049,7 +1049,7 @@ function App() {
       const next = new Set(prev);
       if (next.has(projectPath)) next.delete(projectPath);
       else next.add(projectPath);
-      localStorage.setItem("kcoder_pinned_projects", JSON.stringify([...next]));
+      localStorage.setItem("kcode_pinned_projects", JSON.stringify([...next]));
       return next;
     });
   };
@@ -1073,7 +1073,7 @@ function App() {
         const next = new Set(
           [...current].filter((path) => !workspacePathsEqual(path, projectPath)),
         );
-        try { localStorage.setItem("kcoder_pinned_projects", JSON.stringify([...next])); } catch { /* noop */ }
+        try { localStorage.setItem("kcode_pinned_projects", JSON.stringify([...next])); } catch { /* noop */ }
         return next;
       });
       // 服务端同样要移除，否则手机端会继续把这个项目显示成一个空分组，
@@ -1433,7 +1433,6 @@ function App() {
   const steeredTurnSegmentsByTurnId = steeredTurnProjection.segmentsByTurnId;
   const steeredTurnIds = steeredTurnProjection.turnIds;
   const hasConversationContent = displayMessages.length > 0
-    || threadSubagents.length > 0
     || orphanTurnIds.length > 0
     || Boolean(plan?.steps.length)
     || Boolean(pendingApproval)
@@ -1465,6 +1464,7 @@ function App() {
               plan={turnId === planTurnId ? plan : null}
               workflowPlan={workflowPlanActive}
               turnId={turnId}
+              userMessagePresent={Boolean(turnUserMessageIds[turnId])}
               streaming={turnId === currentThreadTurnId}
               initialTextVisible={turnId === restoredCurrentTurnId}
               activityStatus={turnId === activityStatus?.turnId ? activityStatus.status : null}
@@ -1678,6 +1678,7 @@ function App() {
             plan={segmentPlan}
             workflowPlan={workflowPlanActive}
             turnId={segment.turnId}
+            userMessagePresent={Boolean(turnUserMessageIds[segment.turnId])}
             streaming={segmentStreaming}
             initialTextVisible={segment.turnId === restoredCurrentTurnId}
             activityStatus={segmentActivityStatus}
@@ -1751,6 +1752,7 @@ function App() {
                   plan={attemptPlan}
                   workflowPlan={workflowPlanActive}
                   turnId={turnId}
+                  userMessagePresent={Boolean(turnUserMessageIds[turnId])}
                   streaming={attemptIsTerminalSegment && turnId === currentThreadTurnId}
                   initialTextVisible={turnId === restoredCurrentTurnId}
                   activityStatus={attemptActivityStatus}
@@ -2711,6 +2713,7 @@ function App() {
                           plan={messagePlan}
                           workflowPlan={workflowPlanActive}
                           turnId={message.turnId}
+                          userMessagePresent={Boolean(message.turnId && turnUserMessageIds[message.turnId])}
                           streaming={message.status === "streaming"}
                           initialTextVisible={message.turnId === restoredCurrentTurnId}
                           activityStatus={messageActivityStatus}
@@ -3096,7 +3099,12 @@ function App() {
                         <span className="attachment-name">{attachment.name}</span>
                       </button>
                     )
-                    : <Paperclip size={12} />}
+                    : (
+                      <>
+                        <Paperclip size={12} />
+                        <span className="attachment-name">{attachment.name}</span>
+                      </>
+                    )}
                   {attachment.kind === "document" && attachment.truncated
                     ? (
                       <span className="attachment-truncated" aria-label={`${attachment.name} 内容已截断`} title="内容已按上限截断">

@@ -121,7 +121,10 @@
   flex-direction: column;
   align-items: flex-end;
 }
+.message--user { position: relative; z-index: 2; }
 .message--user .message-role {
+  position: relative;
+  z-index: 2;
   order: 3;
   display: flex;
   height: 0;
@@ -134,7 +137,11 @@
   line-height: 1;
 }
 .message--user .message-role:focus-within { height: auto; }
-.message--user .message-copy-button { color: var(--color-ink-subtle); }
+.message--user .message-copy-button { position: relative; z-index: 3; color: var(--color-ink-subtle); }
+
+@media (max-width: 720px) {
+  .message--user .message-role { min-height: 24px; }
+}
 
 .message-content { line-height: 1.7; }
 .message--user .message-content {
@@ -193,14 +200,15 @@
   max-height: min(240px, 28vh);
   padding: 10px 18px 11px;
   overflow-y: auto;
-  font-size: var(--font-size-md);
+  font-size: 15px;
   line-height: 1.6;
 }
 .composer textarea::placeholder { color: var(--color-ink-subtle); opacity: 1; }
 /* The composer owns focus feedback; nested textarea glow caused a second box
    and a one-pixel jump in enhanced-animations.css. */
 [data-theme] .composer textarea:focus { transform: none; box-shadow: none; }
-.composer-controls { padding: 6px 12px 10px; gap: var(--workspace-gap); }
+.composer-footer { z-index: 4; }
+.composer-controls { position: relative; z-index: 4; padding: 6px 12px 10px; gap: var(--workspace-gap); }
 .composer-options { gap: 2px; flex-wrap: nowrap; }
 .composer-options .model-selector { flex: 1 1 120px; min-width: 0; }
 .composer-actions::before { display: none; }

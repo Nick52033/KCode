@@ -22,7 +22,7 @@ impl EventPublisher for RecordingPublisher {
 }
 
 fn valid_challenge(input: &str) -> bool {
-    input.strip_prefix("kcoder-").is_some_and(|suffix| {
+    input.strip_prefix("kcode-").is_some_and(|suffix| {
         suffix.len() == 12 && suffix.bytes().all(|byte| byte.is_ascii_hexdigit())
     })
 }
@@ -94,13 +94,13 @@ async fn run_smoke(input: &str) -> Value {
 
 #[test]
 fn smoke_challenge_rejects_general_commands() {
-    assert!(valid_challenge("kcoder-012345abcdef"));
+    assert!(valid_challenge("kcode-012345abcdef"));
     for input in [
         "",
         "delete files",
-        "kcoder-../secret",
-        "kcoder-012345abcdef\n",
-        "kcoder-012345abcdef-more",
+        "kcode-../secret",
+        "kcode-012345abcdef\n",
+        "kcode-012345abcdef-more",
     ] {
         assert!(!valid_challenge(input));
     }
@@ -108,7 +108,7 @@ fn smoke_challenge_rejects_general_commands() {
 
 #[tokio::test]
 async fn smoke_uses_existing_runtime_and_read_only_tool() {
-    assert_eq!(run_smoke("kcoder-012345abcdef").await["tools"], 1);
+    assert_eq!(run_smoke("kcode-012345abcdef").await["tools"], 1);
 }
 
 #[tokio::test]

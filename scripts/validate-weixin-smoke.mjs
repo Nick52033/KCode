@@ -12,7 +12,7 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const endpoint = 'https://ilinkai.weixin.qq.com/';
 const baseInfo = { channel_version: '2.4.9', bot_agent: 'KCode/0.10.0 (weixin-smoke)' };
 const maxBody = 1024 * 1024;
-const challenge = `kcoder-${crypto.randomBytes(6).toString('hex')}`;
+const challenge = `kcode-${crypto.randomBytes(6).toString('hex')}`;
 const pageKey = crypto.randomBytes(24).toString('hex');
 let stopped = false;
 let verification = '';
@@ -105,7 +105,7 @@ function stop() {
 }
 
 async function runRuntime(input, binary) {
-  assert(/^kcoder-[a-f0-9]{12}$/.test(input));
+  assert(/^kcode-[a-f0-9]{12}$/.test(input));
   return new Promise((resolve, reject) => {
     activeChild = spawn(binary, ['--ignored', '--exact', 'live_weixin_runtime_once', '--nocapture'],
       { cwd: root, stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true });
@@ -303,7 +303,7 @@ async function verifyOnce(binary) {
       const runtime = await runRuntime(match.input, binary);
       assert(runtime.state === 'completed' && runtime.tools === 1 && runtime.providerCalls === 2);
       await request(account.base, 'ilink/bot/sendmessage', { base_info: baseInfo, msg: {
-        from_user_id: '', to_user_id: account.owner, client_id: `kcoder-smoke-${crypto.randomUUID()}`,
+        from_user_id: '', to_user_id: account.owner, client_id: `kcode-smoke-${crypto.randomUUID()}`,
         message_type: 2, message_state: 2, item_list: [{ type: 1, text_item: { text: runtime.reply } }],
         context_token: match.context,
       } }, account.token, 15000);

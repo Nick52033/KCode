@@ -20,7 +20,7 @@ interface PositionedAnchor extends MessageAnchor {
   contentTop: number;
 }
 
-const BOOKMARKS_KEY_PREFIX = "kcoder_message_bookmarks_v1:";
+const BOOKMARKS_KEY_PREFIX = "kcode_message_bookmarks_v1:";
 
 function readBookmarks(threadId: string | null): Set<string> {
   if (!threadId) return new Set();

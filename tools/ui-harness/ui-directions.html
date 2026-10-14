@@ -243,10 +243,10 @@
           try {
             const doc = frame.contentDocument;
             if (!doc || !doc.head) return;
-            let style = doc.getElementById("kcoder-direction");
+            let style = doc.getElementById("kcode-direction");
             if (!style) {
               style = doc.createElement("style");
-              style.id = "kcoder-direction";
+              style.id = "kcode-direction";
             }
             style.textContent = css;
             doc.head.appendChild(style);

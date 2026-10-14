@@ -164,8 +164,8 @@ const REPLY = Array.from(
     for (const theme of ['light', 'dark']) {
       for (const background of [false, true]) {
         await page.evaluate(({ theme, background }) => {
-          localStorage.setItem('kcoder_theme', theme);
-          localStorage.setItem('kcoder_background_enabled', String(background));
+          localStorage.setItem('kcode_theme', theme);
+          localStorage.setItem('kcode_background_enabled', String(background));
         }, { theme, background });
         await page.reload();
         await ready();
@@ -267,14 +267,14 @@ const REPLY = Array.from(
 
     // 截图（浅色与深色各一张，两种都带背景以体现遮罩）。
     await page.evaluate(() => {
-      localStorage.setItem('kcoder_background_enabled', 'true');
-      localStorage.setItem('kcoder_theme', 'light');
+      localStorage.setItem('kcode_background_enabled', 'true');
+      localStorage.setItem('kcode_theme', 'light');
     });
     await page.reload();
     await ready();
     await expect(page.locator('.message-list')).toHaveCount(1);
     await page.screenshot({ path: 'docs/sys/阅读层级-原生-浅色.png' });
-    await page.evaluate(() => localStorage.setItem('kcoder_theme', 'dark'));
+    await page.evaluate(() => localStorage.setItem('kcode_theme', 'dark'));
     await page.reload();
     await ready();
     await expect(page.locator('.message-list')).toHaveCount(1);

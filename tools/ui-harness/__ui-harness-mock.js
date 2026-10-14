@@ -13,7 +13,7 @@
     return `${year}-${month}-${day}`;
   };
   const threadFixture = { schemaVersion: 1, id: "thread-1", title: "Phase 6 workbench", createdAtMs: 1, updatedAtMs: 2, archived: false, inProject: true, workspacePath: "D:\\code\\KCode" };
-  const threadOverride = localStorage.getItem("kcoder_e2e_thread_override");
+  const threadOverride = localStorage.getItem("kcode_e2e_thread_override");
   const thread = threadOverride ? { ...threadFixture, ...JSON.parse(threadOverride) } : threadFixture;
   const secondThread = { schemaVersion: 1, id: "thread-2", title: "Parallel conversation", createdAtMs: 3, updatedAtMs: 3, archived: false };
   const openAiProvider = { schemaVersion: 1, id: "openai", kind: "open_ai_compatible", transport: "open_ai_chat_completions", name: "OpenAI", baseUrl: "https://api.openai.com/v1", model: "gpt-4.1", models: [{ id: "gpt-4.1", displayName: "GPT-4.1", contextWindow: 128e3, fallback: false }, { id: "gpt-4o", displayName: "GPT-4 Omni", contextWindow: 64e3, fallback: false }], endpoints: [], hasApiKey: true };
@@ -139,7 +139,7 @@
     })),
     blockers: []
   });
-  let workflowRun = JSON.parse(localStorage.getItem("kcoder_e2e_workflow_run") ?? "null");
+  let workflowRun = JSON.parse(localStorage.getItem("kcode_e2e_workflow_run") ?? "null");
   let providerCatalog = { schemaVersion: 1, activeProviderId: "openai", providers: [openAiProvider, ziccProvider, pendingProvider] };
   let approvalMode = "ask";
   let reasoningEffort = "medium";
@@ -169,14 +169,14 @@
     });
   }
   function restoreMailboxFixture() {
-    const restoredMailbox = JSON.parse(localStorage.getItem("kcoder_e2e_mailbox") ?? "null");
+    const restoredMailbox = JSON.parse(localStorage.getItem("kcode_e2e_mailbox") ?? "null");
     if (!restoredMailbox) return;
     mailboxByThread.set(restoredMailbox.threadId, restoredMailbox.pending);
     mailboxRevisionByThread.set(restoredMailbox.threadId, 1);
     if (restoredMailbox.activeTurnId) {
       activeTurnIds.set(restoredMailbox.threadId, restoredMailbox.activeTurnId);
     }
-    localStorage.removeItem("kcoder_e2e_mailbox");
+    localStorage.removeItem("kcode_e2e_mailbox");
   }
   restoreMailboxFixture();
   const invocationArgs = {};
@@ -479,11 +479,11 @@
         window.__invoked.push(command);
         invocationArgs[command] = args ?? {};
         if (command === "plugin:dialog|open") {
-          const selected = localStorage.getItem("kcoder_e2e_attachment_dialog_paths");
+          const selected = localStorage.getItem("kcode_e2e_attachment_dialog_paths");
           return selected ? JSON.parse(selected) : null;
         }
         if (command === "plugin:fs|stat") {
-          const raw = localStorage.getItem("kcoder_e2e_attachment_file_bytes");
+          const raw = localStorage.getItem("kcode_e2e_attachment_file_bytes");
           const size = raw ? JSON.parse(raw).length : 0;
           return {
             isFile: true,
@@ -497,7 +497,7 @@
           };
         }
         if (command === "plugin:fs|read_file") {
-          const bytes = localStorage.getItem("kcoder_e2e_attachment_file_bytes");
+          const bytes = localStorage.getItem("kcode_e2e_attachment_file_bytes");
           return bytes ? JSON.parse(bytes) : [];
         }
         if (command === "plugin:event|listen") {
@@ -512,8 +512,8 @@
           return 1;
         }
         if (command === "workspace_state") {
-          const forcedPath = localStorage.getItem("kcoder_e2e_workspace_path");
-          const forcedRecentProjects = localStorage.getItem("kcoder_e2e_recent_projects");
+          const forcedPath = localStorage.getItem("kcode_e2e_workspace_path");
+          const forcedRecentProjects = localStorage.getItem("kcode_e2e_recent_projects");
           if (forcedPath) {
             workspaceState = {
               ...workspaceState,
@@ -542,7 +542,7 @@
             lastOpenedAtMs: Date.now()
           };
           workspaceState = { current, recent: [current, ...workspaceState.recent] };
-          localStorage.setItem("kcoder_e2e_workspace_path", path);
+          localStorage.setItem("kcode_e2e_workspace_path", path);
           return current;
         }
         if (command === "create_thread") {
@@ -561,12 +561,12 @@
           return workflowReadiness(workflow);
         }
         if (command === "get_workflow_run") {
-          const restored = localStorage.getItem("kcoder_e2e_workflow_run");
+          const restored = localStorage.getItem("kcode_e2e_workflow_run");
           if (restored) workflowRun = JSON.parse(restored);
           return workflowRun?.threadId === args?.threadId ? workflowRun : null;
         }
         if (command === "get_plan") {
-          const configured = localStorage.getItem("kcoder_e2e_plan");
+          const configured = localStorage.getItem("kcode_e2e_plan");
           if (configured) return JSON.parse(configured);
         }
         if (command === "cancel_workflow_run") {
@@ -744,50 +744,50 @@
           };
         }
         if (command === "turn_interrupt") {
-          if (localStorage.getItem("kcoder_e2e_hold_cancel") === "true") {
+          if (localStorage.getItem("kcode_e2e_hold_cancel") === "true") {
             return new Promise(() => void 0);
           }
           return null;
         }
         if (command === "cancel_turn") {
-          if (localStorage.getItem("kcoder_e2e_hold_cancel") === "true") {
+          if (localStorage.getItem("kcode_e2e_hold_cancel") === "true") {
             return new Promise(() => void 0);
           }
           return true;
         }
         if (command === "list_threads") {
-          const configured = localStorage.getItem("kcoder_e2e_threads");
+          const configured = localStorage.getItem("kcode_e2e_threads");
           if (configured) return JSON.parse(configured);
-          const forcedThreadWorkspacePath = localStorage.getItem("kcoder_e2e_thread_workspace_path");
+          const forcedThreadWorkspacePath = localStorage.getItem("kcode_e2e_thread_workspace_path");
           if (forcedThreadWorkspacePath) return [{ ...thread, workspacePath: forcedThreadWorkspacePath }];
         }
         if (command === "list_subagents") {
-          const configured = localStorage.getItem("kcoder_e2e_subagents");
+          const configured = localStorage.getItem("kcode_e2e_subagents");
           if (configured) return JSON.parse(configured);
         }
-        if ((command === "get_plan" || command === "get_goal") && String(args?.threadId ?? "") === localStorage.getItem("kcoder_e2e_empty_thread_id")) {
+        if ((command === "get_plan" || command === "get_goal") && String(args?.threadId ?? "") === localStorage.getItem("kcode_e2e_empty_thread_id")) {
           return null;
         }
         if (command === "read_thread_history") {
-          const recovered = localStorage.getItem("kcoder_e2e_thread_history");
+          const recovered = localStorage.getItem("kcode_e2e_thread_history");
           if (recovered) return JSON.parse(recovered);
           return null;
         }
         if (command === "list_thread_turns") {
-          const page = localStorage.getItem("kcoder_e2e_thread_turns_page");
+          const page = localStorage.getItem("kcode_e2e_thread_turns_page");
           if (page) return JSON.parse(page);
         }
         if (command === "read_thread") {
-          const delayMs = Number(localStorage.getItem("kcoder_e2e_read_delay_ms") ?? 0);
+          const delayMs = Number(localStorage.getItem("kcode_e2e_read_delay_ms") ?? 0);
           if (delayMs > 0) await new Promise((resolve) => setTimeout(resolve, delayMs));
-          const detailsByThread = localStorage.getItem("kcoder_e2e_thread_detail_by_id");
+          const detailsByThread = localStorage.getItem("kcode_e2e_thread_detail_by_id");
           if (detailsByThread) {
             const detail = JSON.parse(detailsByThread)[String(args?.threadId ?? "")];
             if (detail) return detail;
           }
-          const recovered = localStorage.getItem("kcoder_e2e_thread_detail");
+          const recovered = localStorage.getItem("kcode_e2e_thread_detail");
           if (recovered) return JSON.parse(recovered);
-          const forcedThreadWorkspacePath = localStorage.getItem("kcoder_e2e_thread_workspace_path");
+          const forcedThreadWorkspacePath = localStorage.getItem("kcode_e2e_thread_workspace_path");
           if (forcedThreadWorkspacePath) {
             const detail = responses.read_thread;
             return {
@@ -843,14 +843,14 @@
         }
         if (command === "mcp_config") return mcpConfig;
         if (command === "plugin_overview") {
-          if (localStorage.getItem("kcoder_e2e_plugin_empty") === "true") {
+          if (localStorage.getItem("kcode_e2e_plugin_empty") === "true") {
             return { ...pluginOverview, plugins: [] };
           }
           return pluginOverview;
         }
         if (command === "set_plugin_enabled") {
           const pluginId = String(args?.pluginId ?? "");
-          if (localStorage.getItem("kcoder_e2e_plugin_toggle_error") === pluginId) {
+          if (localStorage.getItem("kcode_e2e_plugin_toggle_error") === pluginId) {
             throw new Error("plugin runtime refresh failed");
           }
           pluginOverview = {
@@ -937,7 +937,7 @@
         }
         if (command === "start_pty") {
           ptyStartRequests.push(args?.request ?? null);
-          const exited = localStorage.getItem("kcoder_e2e_pty_state") === "exited";
+          const exited = localStorage.getItem("kcode_e2e_pty_state") === "exited";
           return {
             id: `pty-${ptyStartRequests.length}`,
             state: exited ? { state: "exited", code: 0 } : { state: "running" },
@@ -951,7 +951,7 @@
           };
         }
         if (command === "pty_status") {
-          const exited = localStorage.getItem("kcoder_e2e_pty_state") === "exited";
+          const exited = localStorage.getItem("kcode_e2e_pty_state") === "exited";
           return {
             id: String(args?.sessionId ?? "pty-1"),
             state: exited ? { state: "exited", code: 0 } : { state: "running" },
@@ -965,7 +965,7 @@
           };
         }
         if (command === "wait_pty") {
-          const exited = localStorage.getItem("kcoder_e2e_pty_state") === "exited";
+          const exited = localStorage.getItem("kcode_e2e_pty_state") === "exited";
           if (!exited) await new Promise(() => void 0);
           return {
             id: String(args?.sessionId ?? "pty-1"),
@@ -981,7 +981,7 @@
         }
         if (command === "read_pty_output") {
           const cursor = Number(args?.cursor ?? 0);
-          const text = localStorage.getItem("kcoder_e2e_pty_output") ?? "PS D:\\code\\KCode> ";
+          const text = localStorage.getItem("kcode_e2e_pty_output") ?? "PS D:\\code\\KCode> ";
           const chunks = cursor === 0 ? [{ cursor: 0, text }] : [];
           return { chunks, nextCursor: cursor === 0 ? 1 : cursor, oldestCursor: 0, truncatedBeforeCursor: false };
         }
@@ -989,7 +989,7 @@
           ptyWriteMetrics.active += 1;
           ptyWriteMetrics.maxConcurrent = Math.max(ptyWriteMetrics.maxConcurrent, ptyWriteMetrics.active);
           try {
-            const delayMs = Number(localStorage.getItem("kcoder_e2e_pty_write_delay_ms") ?? 0);
+            const delayMs = Number(localStorage.getItem("kcode_e2e_pty_write_delay_ms") ?? 0);
             if (delayMs > 0) await new Promise((resolve) => setTimeout(resolve, delayMs));
             ptyWrites.push(String(args?.input ?? ""));
             return void 0;
@@ -998,11 +998,11 @@
           }
         }
         if (command === "resize_pty" || command === "close_pty") return void 0;
-        if ((command === "open_workspace_file" || command === "reveal_workspace_file") && localStorage.getItem("kcoder_e2e_external_open_error")) {
-          throw new Error(localStorage.getItem("kcoder_e2e_external_open_error") ?? "external open failed");
+        if ((command === "open_workspace_file" || command === "reveal_workspace_file") && localStorage.getItem("kcode_e2e_external_open_error")) {
+          throw new Error(localStorage.getItem("kcode_e2e_external_open_error") ?? "external open failed");
         }
         if (command === "extract_local_document") {
-          const delayMs = Number(localStorage.getItem("kcoder_e2e_attachment_extract_delay_ms") ?? 0);
+          const delayMs = Number(localStorage.getItem("kcode_e2e_attachment_extract_delay_ms") ?? 0);
           if (delayMs > 0) await new Promise((resolve) => setTimeout(resolve, delayMs));
           const name = String(args?.name ?? "attachment.txt");
           const dataUrl = String(args?.dataUrl ?? "");

@@ -453,7 +453,7 @@ async fn run(
                 .get("context_token")
                 .and_then(Value::as_str)
                 .unwrap_or("");
-            call(&client, &account.2, "ilink/bot/sendmessage", Some(json!({"base_info":serde_json::from_str::<Value>(BASE_INFO).unwrap(),"msg":{"from_user_id":"","to_user_id":account.1,"client_id":format!("kcoder-{}",uuid::Uuid::new_v4()),"message_type":2,"message_state":2,"item_list":[{"type":1,"text_item":{"text":reply}}],"context_token":context}})), Some(&account.0)).await?;
+            call(&client, &account.2, "ilink/bot/sendmessage", Some(json!({"base_info":serde_json::from_str::<Value>(BASE_INFO).unwrap(),"msg":{"from_user_id":"","to_user_id":account.1,"client_id":format!("kcode-{}",uuid::Uuid::new_v4()),"message_type":2,"message_state":2,"item_list":[{"type":1,"text_item":{"text":reply}}],"context_token":context}})), Some(&account.0)).await?;
         }
     }
     Ok(())

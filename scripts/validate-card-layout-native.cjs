@@ -13,9 +13,9 @@ const { writeFileSync } = require('node:fs');
     for (const theme of ['light', 'dark']) {
       for (const background of [false, true]) {
         await page.evaluate(({ theme, background }) => {
-          localStorage.setItem('kcoder_theme', theme);
-          localStorage.setItem('kcoder_background_enabled', String(background));
-          localStorage.removeItem('kcoder_panel_widths_v1');
+          localStorage.setItem('kcode_theme', theme);
+          localStorage.setItem('kcode_background_enabled', String(background));
+          localStorage.removeItem('kcode_panel_widths_v1');
         }, { theme, background });
         await page.reload();
         await expect(page.getByText('运行时就绪', { exact: true })).toBeVisible();

@@ -1,6 +1,6 @@
 import { CSSProperties, useEffect, useState } from "react";
 
-const STORAGE_KEY = "kcoder_panel_widths_v1";
+const STORAGE_KEY = "kcode_panel_widths_v1";
 type Widths = { sidebar: number | null; panel: number | null };
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
 

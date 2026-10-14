@@ -54,6 +54,8 @@ export function TurnWaitingIndicator({
   cancelling = false,
 }: {
   activityStatus?: AgentActivityStatus | null;
+  /** Whether this turn is anchored to a visible user message. Unanchored internal turns show execution status directly. */
+  userMessagePresent?: boolean;
   activitySinceMs?: number;
   streamRetry?: { attempt: number; maxAttempts: number } | null;
   retryAtMs?: number;
@@ -119,6 +121,7 @@ export const ConversationTurnActivity = memo(function ConversationTurnActivity({
   streaming = false,
   initialTextVisible = false,
   activityStatus = null,
+  userMessagePresent = false,
   activitySinceMs,
   streamRetry = null,
   retryAtMs,
@@ -140,6 +143,8 @@ export const ConversationTurnActivity = memo(function ConversationTurnActivity({
   streaming?: boolean;
   initialTextVisible?: boolean;
   activityStatus?: AgentActivityStatus | null;
+  /** Whether this turn is anchored to a visible user message. Unanchored internal turns show execution status directly. */
+  userMessagePresent?: boolean;
   /** 当前活动阶段的开始时间，用于"思考中 · 23s"等待计时。 */
   activitySinceMs?: number;
   /** Provider 流中断后的自动重试进度。 */
@@ -176,7 +181,7 @@ export const ConversationTurnActivity = memo(function ConversationTurnActivity({
     : null;
   const groupedProcessTimeline = groupConsecutiveTimeline(processItems);
   const hasItems = Boolean(activities.length || processItems.length);
-  const hasProcess = hasItems || Boolean(activityStatus) || terminalEvent?.kind === "turn_failed" || terminalEvent?.kind === "turn_cancelled";
+  const hasProcess = hasItems || Boolean(activityStatus) || Boolean(terminalEvent);
   const timelineHasTools = processTimeline.some((item) => item.type === "tool");
   const hasDisplayableReasoning = processItems.some((item) => item.type === "reasoning");
   const hasPublicProgress = Boolean(
@@ -185,7 +190,7 @@ export const ConversationTurnActivity = memo(function ConversationTurnActivity({
       || processItems.some((item) => item.type === "text" || item.type === "event"),
   );
   const hasVisibleProgress = hasPublicProgress || hasDisplayableReasoning || Boolean(plan?.steps.length);
-  if (visuallyStreaming && !hasVisibleProgress && !terminalEvent) {
+  if (visuallyStreaming && !hasVisibleProgress && !terminalEvent && userMessagePresent) {
     return (
       <TurnWaitingIndicator
         activityStatus={activityStatus}
@@ -318,9 +323,9 @@ export const ConversationTurnActivity = memo(function ConversationTurnActivity({
               <button className="turn-retry-button" type="button" onClick={onRetry}>
                 <RotateCcw size={14} aria-hidden="true" />
                 <span>
-                  {noProgressGuard
+                  {noProgressGuard || workflowPlan
                     ? "继续当前步骤"
-                    : providerCallLimitExceeded ? "开启新 Turn" : plan?.steps.length ? "继续当前步骤" : "重试"}
+                    : providerCallLimitExceeded ? "开启新 Turn" : "重试"}
                 </span>
               </button>
             ) : null}
@@ -329,7 +334,7 @@ export const ConversationTurnActivity = memo(function ConversationTurnActivity({
           <div className="turn-terminal-actions">
             <button className="turn-retry-button" type="button" onClick={onRetry}>
               <RotateCcw size={14} aria-hidden="true" />
-              <span>{plan?.steps.length ? "继续当前步骤" : "重试"}</span>
+              <span>重试</span>
             </button>
           </div>
         ) : null}
@@ -407,9 +412,10 @@ function reasoningSummaryText(item: ReasoningTimelineItem) {
  */
 function latestReasoningHint(timeline: TurnTimelineItem[]) {
   const item = [...timeline].reverse().find(
-    (entry): entry is ReasoningTimelineItem => entry.type === "reasoning" && isDisplayableReasoningItem(entry),
+    (entry): entry is ReasoningTimelineItem => entry.type === "reasoning",
   );
   if (!item) return null;
+  if (!isDisplayableReasoningItem(item)) return null;
   const line = reasoningSummaryText(item).split("\n").map((part) => part.trim()).filter(Boolean).pop() ?? "";
   const cleaned = line.replace(/^[#>*_`\-\s]+/, "").replace(/[#*_`\s]+$/, "").trim();
   if (!cleaned) return null;
@@ -788,11 +794,24 @@ function ToolActivityGroup({
           ? "等待执行"
           : "已完成";
   const active = state === "running" || state === "pending";
+  const isWaitGroup = visibleActivities.length > 0 && visibleActivities.every((activity) => activity.call.name === "wait_agent");
   // Codex 式标记：行首用内容类型图标（命令组=终端，其他操作=工具），不用产品 Logo。
   const GroupMarker = allCommands ? SquareTerminal : Wrench;
   // Follow activity only until the user chooses; subsequent tools must not reset that choice.
   const [userExpanded, setUserExpanded] = useState<boolean | null>(null);
-  const expanded = userExpanded ?? active;
+  const previousState = useRef(state);
+  const previousCount = useRef(visibleActivities.length);
+  useEffect(() => {
+    if (isWaitGroup && state === "completed"
+      && (previousState.current !== "completed" || previousCount.current !== visibleActivities.length)) setUserExpanded(null);
+    previousState.current = state;
+    previousCount.current = visibleActivities.length;
+  }, [isWaitGroup, state, visibleActivities.length]);
+  // Keep failed operations open so the backend diagnostic is immediately visible;
+  // successful and cancelled groups still fold after they reach a terminal state.
+  const expanded = isWaitGroup && state === "completed" && userExpanded === null
+    ? false
+    : userExpanded ?? (active || state === "failed");
   return (
     <details
       className={`turn-disclosure turn-tool-group turn-tool-group--${state}${allCommands ? " turn-tool-group--commands" : ""}${allCommands && count > 1 ? " turn-tool-group--multiple-commands" : ""}`}

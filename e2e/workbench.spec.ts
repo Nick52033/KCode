@@ -24,7 +24,7 @@ for (const toolName of ["read_file", "run_command"]) {
 
   test(`tool group manual expansion survives appended ${toolName} operations and terminal states`, async ({ page }) => {
     await page.emulateMedia({ reducedMotion: "reduce" });
-    await page.goto("/");
+    await page.goto("/", { waitUntil: "domcontentloaded" });
     await expect(page.getByRole("heading", { name: "Phase 6 workbench" })).toBeVisible();
     await emitDisclosureEvents(page, [{ type: "turn_started" }, started("disclosure-1"), completed("disclosure-1")]);
     const group = page.locator(".turn-execution--live .turn-tool-group");
@@ -63,7 +63,7 @@ for (const toolName of ["read_file", "run_command"]) {
 
   test(`tool group manual collapse survives queued and running ${toolName} operations`, async ({ page }) => {
     await page.emulateMedia({ reducedMotion: "reduce" });
-    await page.goto("/");
+    await page.goto("/", { waitUntil: "domcontentloaded" });
     await expect(page.getByRole("heading", { name: "Phase 6 workbench" })).toBeVisible();
     await emitDisclosureEvents(page, [{ type: "turn_started" }, started("disclosure-1")]);
     const group = page.locator(".turn-execution--live .turn-tool-group");
@@ -84,7 +84,7 @@ for (const toolName of ["read_file", "run_command"]) {
 
   test(`tool group untouched ${toolName} operations retain automatic disclosure`, async ({ page }) => {
     await page.emulateMedia({ reducedMotion: "reduce" });
-    await page.goto("/");
+    await page.goto("/", { waitUntil: "domcontentloaded" });
     await expect(page.getByRole("heading", { name: "Phase 6 workbench" })).toBeVisible();
     await emitDisclosureEvents(page, [{ type: "turn_started" }, { type: "tool_queued", call: call("disclosure-1") }]);
     const group = page.locator(".turn-execution--live .turn-tool-group");
@@ -123,7 +123,7 @@ test.beforeEach(async ({ page }) => {
       return `${year}-${month}-${day}`;
     };
     const threadFixture = { schemaVersion: 1, id: "thread-1", title: "Phase 6 workbench", createdAtMs: 1, updatedAtMs: 2, archived: false, inProject: true, workspacePath: "D:\\code\\KCode" };
-    const threadOverride = localStorage.getItem("kcoder_e2e_thread_override");
+    const threadOverride = localStorage.getItem("kcode_e2e_thread_override");
     const thread = threadOverride ? { ...threadFixture, ...JSON.parse(threadOverride) } : threadFixture;
     const secondThread = { schemaVersion: 1, id: "thread-2", title: "Parallel conversation", createdAtMs: 3, updatedAtMs: 3, archived: false };
     const openAiProvider = { schemaVersion: 1, id: "openai", kind: "open_ai_compatible", transport: "open_ai_chat_completions", name: "OpenAI", baseUrl: "https://api.openai.com/v1", model: "gpt-4.1", models: [{ id: "gpt-4.1", displayName: "GPT-4.1", contextWindow: 128000, fallback: false }, { id: "gpt-4o", displayName: "GPT-4 Omni", contextWindow: 64000, fallback: false }], endpoints: [], hasApiKey: true };
@@ -257,7 +257,7 @@ test.beforeEach(async ({ page }) => {
       })),
       blockers: [],
     });
-    let workflowRun = JSON.parse(localStorage.getItem("kcoder_e2e_workflow_run") ?? "null") as null | {
+    let workflowRun = JSON.parse(localStorage.getItem("kcode_e2e_workflow_run") ?? "null") as null | {
       schemaVersion: number;
       id: string;
       threadId: string;
@@ -309,7 +309,7 @@ test.beforeEach(async ({ page }) => {
       });
     }
     function restoreMailboxFixture() {
-      const restoredMailbox = JSON.parse(localStorage.getItem("kcoder_e2e_mailbox") ?? "null") as null | {
+      const restoredMailbox = JSON.parse(localStorage.getItem("kcode_e2e_mailbox") ?? "null") as null | {
         threadId: string;
         activeTurnId?: string | null;
         pending: Array<{
@@ -328,7 +328,7 @@ test.beforeEach(async ({ page }) => {
       if (restoredMailbox.activeTurnId) {
         activeTurnIds.set(restoredMailbox.threadId, restoredMailbox.activeTurnId);
       }
-      localStorage.removeItem("kcoder_e2e_mailbox");
+      localStorage.removeItem("kcode_e2e_mailbox");
     }
     restoreMailboxFixture();
     const invocationArgs: Record<string, unknown> = {};
@@ -607,11 +607,11 @@ test.beforeEach(async ({ page }) => {
           (window as unknown as { __invoked: string[] }).__invoked.push(command);
           invocationArgs[command] = args ?? {};
           if (command === "plugin:dialog|open") {
-            const selected = localStorage.getItem("kcoder_e2e_attachment_dialog_paths");
+            const selected = localStorage.getItem("kcode_e2e_attachment_dialog_paths");
             return selected ? JSON.parse(selected) : null;
           }
           if (command === "plugin:fs|stat") {
-            const raw = localStorage.getItem("kcoder_e2e_attachment_file_bytes");
+            const raw = localStorage.getItem("kcode_e2e_attachment_file_bytes");
             const size = raw ? (JSON.parse(raw) as number[]).length : 0;
             return {
               isFile: true,
@@ -625,7 +625,7 @@ test.beforeEach(async ({ page }) => {
             };
           }
           if (command === "plugin:fs|read_file") {
-            const bytes = localStorage.getItem("kcoder_e2e_attachment_file_bytes");
+            const bytes = localStorage.getItem("kcode_e2e_attachment_file_bytes");
             return bytes ? JSON.parse(bytes) : [];
           }
           if (command === "plugin:event|listen") {
@@ -640,8 +640,8 @@ test.beforeEach(async ({ page }) => {
             return 1;
           }
           if (command === "workspace_state") {
-            const forcedPath = localStorage.getItem("kcoder_e2e_workspace_path");
-            const forcedRecentProjects = localStorage.getItem("kcoder_e2e_recent_projects");
+            const forcedPath = localStorage.getItem("kcode_e2e_workspace_path");
+            const forcedRecentProjects = localStorage.getItem("kcode_e2e_recent_projects");
             if (forcedPath) {
               workspaceState = {
                 ...workspaceState,
@@ -670,7 +670,7 @@ test.beforeEach(async ({ page }) => {
               lastOpenedAtMs: Date.now(),
             };
             workspaceState = { current, recent: [current, ...workspaceState.recent] };
-            localStorage.setItem("kcoder_e2e_workspace_path", path);
+            localStorage.setItem("kcode_e2e_workspace_path", path);
             return current;
           }
           if (command === "create_thread") {
@@ -709,12 +709,12 @@ test.beforeEach(async ({ page }) => {
             return workflowReadiness(workflow);
           }
           if (command === "get_workflow_run") {
-            const restored = localStorage.getItem("kcoder_e2e_workflow_run");
+            const restored = localStorage.getItem("kcode_e2e_workflow_run");
             if (restored) workflowRun = JSON.parse(restored);
             return workflowRun?.threadId === args?.threadId ? workflowRun : null;
           }
           if (command === "get_plan") {
-            const configured = localStorage.getItem("kcoder_e2e_plan");
+            const configured = localStorage.getItem("kcode_e2e_plan");
             if (configured) return JSON.parse(configured);
           }
           if (command === "cancel_workflow_run") {
@@ -817,7 +817,7 @@ test.beforeEach(async ({ page }) => {
             };
           }
           if (command === "turn_retry") {
-            if (localStorage.getItem("kcoder_e2e_delay_retry") === "true") {
+            if (localStorage.getItem("kcode_e2e_delay_retry") === "true") {
               await new Promise<void>((resolve) => {
                 releaseRetry = resolve;
               });
@@ -906,53 +906,53 @@ test.beforeEach(async ({ page }) => {
             };
           }
           if (command === "turn_interrupt") {
-            if (localStorage.getItem("kcoder_e2e_hold_cancel") === "true") {
+            if (localStorage.getItem("kcode_e2e_hold_cancel") === "true") {
               return new Promise(() => undefined);
             }
             return null;
           }
           if (command === "cancel_turn") {
-            if (localStorage.getItem("kcoder_e2e_hold_cancel") === "true") {
+            if (localStorage.getItem("kcode_e2e_hold_cancel") === "true") {
               return new Promise(() => undefined);
             }
             return true;
           }
           if (command === "list_threads") {
-            const configured = localStorage.getItem("kcoder_e2e_threads");
+            const configured = localStorage.getItem("kcode_e2e_threads");
             if (configured) return JSON.parse(configured);
-            const forcedThreadWorkspacePath = localStorage.getItem("kcoder_e2e_thread_workspace_path");
+            const forcedThreadWorkspacePath = localStorage.getItem("kcode_e2e_thread_workspace_path");
             if (forcedThreadWorkspacePath) return [{ ...thread, workspacePath: forcedThreadWorkspacePath }];
           }
           if (command === "list_subagents") {
-            const configured = localStorage.getItem("kcoder_e2e_subagents");
+            const configured = localStorage.getItem("kcode_e2e_subagents");
             if (configured) return JSON.parse(configured);
           }
           if (
             (command === "get_plan" || command === "get_goal")
-            && String(args?.threadId ?? "") === localStorage.getItem("kcoder_e2e_empty_thread_id")
+            && String(args?.threadId ?? "") === localStorage.getItem("kcode_e2e_empty_thread_id")
           ) {
             return null;
           }
           if (command === "read_thread_history") {
-            const recovered = localStorage.getItem("kcoder_e2e_thread_history");
+            const recovered = localStorage.getItem("kcode_e2e_thread_history");
             if (recovered) return JSON.parse(recovered);
             return null;
           }
           if (command === "list_thread_turns") {
-            const page = localStorage.getItem("kcoder_e2e_thread_turns_page");
+            const page = localStorage.getItem("kcode_e2e_thread_turns_page");
             if (page) return JSON.parse(page);
           }
           if (command === "read_thread") {
-            const delayMs = Number(localStorage.getItem("kcoder_e2e_read_delay_ms") ?? 0);
+            const delayMs = Number(localStorage.getItem("kcode_e2e_read_delay_ms") ?? 0);
             if (delayMs > 0) await new Promise((resolve) => setTimeout(resolve, delayMs));
-            const detailsByThread = localStorage.getItem("kcoder_e2e_thread_detail_by_id");
+            const detailsByThread = localStorage.getItem("kcode_e2e_thread_detail_by_id");
             if (detailsByThread) {
               const detail = (JSON.parse(detailsByThread) as Record<string, unknown>)[String(args?.threadId ?? "")];
               if (detail) return detail;
             }
-            const recovered = localStorage.getItem("kcoder_e2e_thread_detail");
+            const recovered = localStorage.getItem("kcode_e2e_thread_detail");
             if (recovered) return JSON.parse(recovered);
-            const forcedThreadWorkspacePath = localStorage.getItem("kcoder_e2e_thread_workspace_path");
+            const forcedThreadWorkspacePath = localStorage.getItem("kcode_e2e_thread_workspace_path");
             if (forcedThreadWorkspacePath) {
               const detail = responses.read_thread as { summary: typeof thread };
               return {
@@ -1010,14 +1010,14 @@ test.beforeEach(async ({ page }) => {
           }
           if (command === "mcp_config") return mcpConfig;
           if (command === "plugin_overview") {
-            if (localStorage.getItem("kcoder_e2e_plugin_empty") === "true") {
+            if (localStorage.getItem("kcode_e2e_plugin_empty") === "true") {
               return { ...pluginOverview, plugins: [] };
             }
             return pluginOverview;
           }
           if (command === "set_plugin_enabled") {
             const pluginId = String(args?.pluginId ?? "");
-            if (localStorage.getItem("kcoder_e2e_plugin_toggle_error") === pluginId) {
+            if (localStorage.getItem("kcode_e2e_plugin_toggle_error") === pluginId) {
               throw new Error("plugin runtime refresh failed");
             }
             pluginOverview = {
@@ -1138,7 +1138,7 @@ test.beforeEach(async ({ page }) => {
           }
           if (command === "start_pty") {
             ptyStartRequests.push(args?.request ?? null);
-            const exited = localStorage.getItem("kcoder_e2e_pty_state") === "exited";
+            const exited = localStorage.getItem("kcode_e2e_pty_state") === "exited";
             return {
               id: `pty-${ptyStartRequests.length}`,
               state: exited ? { state: "exited", code: 0 } : { state: "running" },
@@ -1152,7 +1152,7 @@ test.beforeEach(async ({ page }) => {
             };
           }
           if (command === "pty_status") {
-            const exited = localStorage.getItem("kcoder_e2e_pty_state") === "exited";
+            const exited = localStorage.getItem("kcode_e2e_pty_state") === "exited";
             return {
               id: String(args?.sessionId ?? "pty-1"),
               state: exited ? { state: "exited", code: 0 } : { state: "running" },
@@ -1166,7 +1166,7 @@ test.beforeEach(async ({ page }) => {
             };
           }
           if (command === "wait_pty") {
-            const exited = localStorage.getItem("kcoder_e2e_pty_state") === "exited";
+            const exited = localStorage.getItem("kcode_e2e_pty_state") === "exited";
             if (!exited) await new Promise(() => undefined);
             return {
               id: String(args?.sessionId ?? "pty-1"),
@@ -1182,7 +1182,7 @@ test.beforeEach(async ({ page }) => {
           }
           if (command === "read_pty_output") {
             const cursor = Number(args?.cursor ?? 0);
-            const text = localStorage.getItem("kcoder_e2e_pty_output") ?? "PS D:\\code\\KCode> ";
+            const text = localStorage.getItem("kcode_e2e_pty_output") ?? "PS D:\\code\\KCode> ";
             const chunks = cursor === 0 ? [{ cursor: 0, text }] : [];
             return { chunks, nextCursor: cursor === 0 ? 1 : cursor, oldestCursor: 0, truncatedBeforeCursor: false };
           }
@@ -1190,7 +1190,7 @@ test.beforeEach(async ({ page }) => {
             ptyWriteMetrics.active += 1;
             ptyWriteMetrics.maxConcurrent = Math.max(ptyWriteMetrics.maxConcurrent, ptyWriteMetrics.active);
             try {
-              const delayMs = Number(localStorage.getItem("kcoder_e2e_pty_write_delay_ms") ?? 0);
+              const delayMs = Number(localStorage.getItem("kcode_e2e_pty_write_delay_ms") ?? 0);
               if (delayMs > 0) await new Promise((resolve) => setTimeout(resolve, delayMs));
               ptyWrites.push(String(args?.input ?? ""));
               return undefined;
@@ -1201,12 +1201,12 @@ test.beforeEach(async ({ page }) => {
           if (command === "resize_pty" || command === "close_pty") return undefined;
           if (
             (command === "open_workspace_file" || command === "reveal_workspace_file")
-            && localStorage.getItem("kcoder_e2e_external_open_error")
+            && localStorage.getItem("kcode_e2e_external_open_error")
           ) {
-            throw new Error(localStorage.getItem("kcoder_e2e_external_open_error") ?? "external open failed");
+            throw new Error(localStorage.getItem("kcode_e2e_external_open_error") ?? "external open failed");
           }
           if (command === "extract_local_document") {
-            const delayMs = Number(localStorage.getItem("kcoder_e2e_attachment_extract_delay_ms") ?? 0);
+            const delayMs = Number(localStorage.getItem("kcode_e2e_attachment_extract_delay_ms") ?? 0);
             if (delayMs > 0) await new Promise((resolve) => setTimeout(resolve, delayMs));
             const name = String(args?.name ?? "attachment.txt");
             const dataUrl = String(args?.dataUrl ?? "");
@@ -1275,7 +1275,7 @@ test.beforeEach(async ({ page }) => {
 
 test("command diagnostics distinguish no matches and errors in live and restored history", async ({ page }) => {
   await page.emulateMedia({ reducedMotion: "reduce" });
-  await page.goto("/");
+  await page.goto("/", { waitUntil: "domcontentloaded" });
   await expect(page.getByRole("heading", { name: "Phase 6 workbench" })).toBeVisible();
   const fixtures = [
     { id: "empty-search", command: "rg absent .", output: "rg: no matches (exit code 1).", metadata: { resultKind: "no_matches", exitCode: 1, outputChunks: [] }, label: "未匹配" },
@@ -1314,7 +1314,7 @@ test("command diagnostics distinguish no matches and errors in live and restored
     await expect(rows.nth(1)).toHaveClass(/--failed/);
   };
   await assertLabels();
-  await page.evaluate(detail => localStorage.setItem("kcoder_e2e_thread_detail", JSON.stringify(detail)), {
+  await page.evaluate(detail => localStorage.setItem("kcode_e2e_thread_detail", JSON.stringify(detail)), {
     schemaVersion: 1,
     summary: { schemaVersion: 1, id: "thread-1", title: "Phase 6 workbench", createdAtMs: 1, updatedAtMs: 3, archived: false },
     messages: [{ schemaVersion: 1, id: "diagnostic-answer", role: "assistant", content: [{ type: "text", text: "检查完成" }], createdAtMs: 3 }],
@@ -1324,14 +1324,16 @@ test("command diagnostics distinguish no matches and errors in live and restored
     turnTimeline: [...activities.map(activity => ({ type: "tool", activity })), { type: "event", itemId: "done", turnId: "turn-disclosure", kind: "turn_completed", title: "Turn 已完成", detail: null }],
     approvals: [], changes: [],
   });
-  await page.reload();
+  // The Vite SPA can keep optional resources open during startup; wait for the document
+  // instead of the full load event before asserting the restored localStorage projection.
+  await page.reload({ waitUntil: "domcontentloaded" });
   await expect(page.getByRole("heading", { name: "Phase 6 workbench" })).toBeVisible();
   await assertLabels();
 });
 
 test("renders conversation process rows as flat single lines", async ({ page }, testInfo) => {
   await page.emulateMedia({ reducedMotion: "reduce" });
-  await page.goto("/");
+  await page.goto("/", { waitUntil: "domcontentloaded" });
   await expect(page.getByRole("heading", { name: "Phase 6 workbench" })).toBeVisible();
   await emitDisclosureEvents(page, [
     { type: "turn_started" },
@@ -1406,7 +1408,7 @@ test("renders conversation process rows as flat single lines", async ({ page }, 
 
 test("collapses a finished reasoning row into a single 思考 summary line", async ({ page }) => {
   await page.emulateMedia({ reducedMotion: "reduce" });
-  await page.goto("/");
+  await page.goto("/", { waitUntil: "domcontentloaded" });
   await expect(page.getByRole("heading", { name: "Phase 6 workbench" })).toBeVisible();
   const summary = "已确认超时来自退出码分类，因此需要保留原始退出码。";
   await emitDisclosureEvents(page, [
@@ -1452,7 +1454,7 @@ test("collapses a finished reasoning row into a single 思考 summary line", asy
 });
 
 test("surfaces runtime details from the titlebar state entry", async ({ page }, testInfo) => {
-  await page.goto("/");
+  await page.goto("/", { waitUntil: "domcontentloaded" });
   if (testInfo.project.name === "narrow") await page.setViewportSize({ width: 420, height: 820 });
 
   const trigger = page.getByRole("button", { name: "运行时状态" });
@@ -1498,7 +1500,7 @@ test("surfaces runtime details from the titlebar state entry", async ({ page }, 
 });
 
 test("keeps composer popover surfaces consistent and closes the mode menu outside", async ({ page }, testInfo) => {
-  await page.goto("/");
+  await page.goto("/", { waitUntil: "domcontentloaded" });
   if (testInfo.project.name === "narrow") await page.setViewportSize({ width: 420, height: 820 });
   const composer = page.locator(".composer");
   const modeTrigger = page.getByRole("button", { name: "选择模式" });
@@ -1560,7 +1562,7 @@ test("keeps composer popover surfaces consistent and closes the mode menu outsid
 });
 
 test("starts a built-in robot workflow from the composer and cancels it after the turn", async ({ page }, testInfo) => {
-  await page.goto("/");
+  await page.goto("/", { waitUntil: "domcontentloaded" });
   const robotSelector = page.getByRole("button", { name: "选择机器人" });
   await robotSelector.click();
   const robotMenu = page.getByRole("menu", { name: "机器人列表" });
@@ -1616,7 +1618,7 @@ test("starts a built-in robot workflow from the composer and cancels it after th
 
 test("restores persisted robot node progress and lists built-in definitions", async ({ page }, testInfo) => {
   await page.addInitScript(() => {
-    localStorage.setItem("kcoder_e2e_workflow_run", JSON.stringify({
+    localStorage.setItem("kcode_e2e_workflow_run", JSON.stringify({
       schemaVersion: 1,
       definitionVersion: 2,
       id: "workflow-restored",
@@ -1636,7 +1638,7 @@ test("restores persisted robot node progress and lists built-in definitions", as
       revision: 3,
     }));
   });
-  await page.goto("/");
+  await page.goto("/", { waitUntil: "domcontentloaded" });
 
   const control = page.getByLabel("机器人工作流 需求设计");
   await expect(control).toContainText("用户故事与功能建模");
@@ -1659,7 +1661,7 @@ test("restores persisted robot node progress and lists built-in definitions", as
 });
 
 test("collapses built-in robots until one is expanded", async ({ page }, testInfo) => {
-  await page.goto("/");
+  await page.goto("/", { waitUntil: "domcontentloaded" });
   await page.locator('button[aria-label="设置"]:visible').click();
   await page.getByRole("button", { name: "机器人", exact: true }).click();
   await expect(page.getByRole("heading", { name: "内置机器人" })).toBeVisible();
@@ -1678,7 +1680,7 @@ test("collapses built-in robots until one is expanded", async ({ page }, testInf
 });
 
 test("groups Skills and locks robot-managed Skills", async ({ page }, testInfo) => {
-  await page.goto("/");
+  await page.goto("/", { waitUntil: "domcontentloaded" });
   await page.locator('button[aria-label="设置"]:visible').click();
   await page.getByRole("button", { name: /Skills/ }).click();
 
@@ -1694,7 +1696,7 @@ test("groups Skills and locks robot-managed Skills", async ({ page }, testInfo) 
 
 test("restores a queued robot identity from the mailbox snapshot", async ({ page }) => {
   await page.addInitScript(() => {
-    localStorage.setItem("kcoder_e2e_mailbox", JSON.stringify({
+    localStorage.setItem("kcode_e2e_mailbox", JSON.stringify({
       threadId: "thread-1",
       activeTurnId: null,
       pending: [{
@@ -1709,7 +1711,7 @@ test("restores a queued robot identity from the mailbox snapshot", async ({ page
       }],
     }));
   });
-  await page.goto("/");
+  await page.goto("/", { waitUntil: "domcontentloaded" });
 
   const selector = page.getByRole("button", { name: "选择机器人" });
   await expect(selector).toContainText("软件测试机器人");
@@ -1720,7 +1722,7 @@ test("restores a queued robot identity from the mailbox snapshot", async ({ page
 });
 
 test("uses composer quick actions for files, attachments, Skills, and extension entry points", async ({ page }, testInfo) => {
-  await page.goto("/");
+  await page.goto("/", { waitUntil: "domcontentloaded" });
   const toolbar = page.getByRole("toolbar", { name: "输入快捷操作" });
   const fileAction = toolbar.getByRole("button", { name: "引用工作区文件" });
   const attachmentAction = toolbar.getByRole("button", { name: "添加附件" });
@@ -1804,7 +1806,7 @@ test("uses composer quick actions for files, attachments, Skills, and extension 
 });
 
 test("polls, cancels, and refreshes knowledge sources without layout overflow", async ({ page }, testInfo) => {
-  await page.goto("/");
+  await page.goto("/", { waitUntil: "domcontentloaded" });
   await page.evaluate(() => {
     const host = window as unknown as {
       __TAURI_INTERNALS__: { invoke: (command: string, args?: Record<string, unknown>) => Promise<unknown> };
@@ -1969,7 +1971,7 @@ test("polls, cancels, and refreshes knowledge sources without layout overflow", 
 
   await page.evaluate(() => {
     localStorage.setItem(
-      "kcoder_e2e_attachment_dialog_paths",
+      "kcode_e2e_attachment_dialog_paths",
       JSON.stringify(["D:\\code\\KCode\\docs\\knowledge\\picked.md"]),
     );
   });
@@ -2050,12 +2052,12 @@ test("polls, cancels, and refreshes knowledge sources without layout overflow", 
 });
 
 test("disables project-only composer quick actions outside a project", async ({ page }) => {
-  await page.goto("/");
-  await page.evaluate(() => localStorage.setItem("kcoder_e2e_thread_override", JSON.stringify({
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  await page.evaluate(() => localStorage.setItem("kcode_e2e_thread_override", JSON.stringify({
     inProject: false,
     workspacePath: null,
   })));
-  await page.reload();
+  await page.reload({ waitUntil: "domcontentloaded" });
 
   const toolbar = page.getByRole("toolbar", { name: "输入快捷操作" });
   const fileAction = toolbar.getByRole("button", { name: "引用工作区文件" });
@@ -2068,9 +2070,9 @@ test("disables project-only composer quick actions outside a project", async ({ 
 
 test("renders the composer add menu in dark mode", async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== "desktop", "One dark-theme visual check is sufficient");
-  await page.goto("/");
-  await page.evaluate(() => localStorage.setItem("kcoder_theme", "dark"));
-  await page.reload();
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  await page.evaluate(() => localStorage.setItem("kcode_theme", "dark"));
+  await page.reload({ waitUntil: "domcontentloaded" });
   await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
 
   await page.getByRole("button", { name: "更多操作" }).click();
@@ -2094,7 +2096,7 @@ test("renders the composer add menu in dark mode", async ({ page }, testInfo) =>
 });
 
 test("supports the primary workbench inspection flow", async ({ page }, testInfo) => {
-  await page.goto("/");
+  await page.goto("/", { waitUntil: "domcontentloaded" });
   await expect(page.getByRole("textbox", { name: "消息" })).toHaveCSS("font-size", "15px");
   await expect.poll(() => page.evaluate(() => (window as unknown as { __invocationArgs: Record<string, unknown> }).__invocationArgs.get_plan)).toEqual({ threadId: "thread-1" });
   await expect.poll(() => page.evaluate(() => (window as unknown as { __invocationArgs: Record<string, unknown> }).__invocationArgs.get_goal)).toEqual({ threadId: "thread-1" });
@@ -2168,8 +2170,8 @@ test("supports the primary workbench inspection flow", async ({ page }, testInfo
   await expect(commandRow.locator(".turn-command-inline, .turn-tool-output")).toHaveCount(0);
   await expect(page.getByText("3 个操作", { exact: true })).toBeVisible();
   await page.screenshot({ path: testInfo.outputPath("inline-plan-and-tools.png"), fullPage: true });
-  await page.evaluate(() => localStorage.setItem("kcoder_theme", "dark"));
-  await page.reload();
+  await page.evaluate(() => localStorage.setItem("kcode_theme", "dark"));
+  await page.reload({ waitUntil: "domcontentloaded" });
   await expect(page.locator(".turn-timeline-tool--command").getByText("pnpm build", { exact: true })).toBeHidden();
   await page.getByText("执行了 1.8s", { exact: true }).click();
   const restoredCommandSummary = page.locator(".turn-tool-group").filter({ hasText: "运行了命令" }).first().locator(":scope > summary");
@@ -2253,7 +2255,7 @@ test("supports the primary workbench inspection flow", async ({ page }, testInfo
 });
 
 test("creates edits and deletes custom user rules", async ({ page }, testInfo) => {
-  await page.goto("/");
+  await page.goto("/", { waitUntil: "domcontentloaded" });
   await page.locator('button[aria-label="设置"]:visible').click();
   await page.getByRole("button", { name: "Rules", exact: true }).click();
 
@@ -2311,7 +2313,7 @@ test("creates edits and deletes custom user rules", async ({ page }, testInfo) =
 });
 
 test("hides failed patch attempts after a matching retry succeeds", async ({ page }, testInfo) => {
-  await page.goto("/");
+  await page.goto("/", { waitUntil: "domcontentloaded" });
   const retryPatch = "*** Begin Patch\n*** Update File: src/App.tsx\n@@\n-old\n+new\n*** End Patch";
   const unparseableRetryPatch = "*** Begin Patch\n@@\n-old\n+new\n*** End Patch";
   const ambiguousSuccessPatchA = "*** Begin Patch\n*** Update File: src/Alpha.ts\n@@\n-old\n+new\n*** End Patch";
@@ -2419,7 +2421,7 @@ test("hides failed patch attempts after a matching retry succeeds", async ({ pag
   await liveMessage.screenshot({ path: testInfo.outputPath(`patch-retry-live-${testInfo.project.name}.png`) });
 
   await page.evaluate(({ activities: storedActivities }) => {
-    localStorage.setItem("kcoder_e2e_thread_detail", JSON.stringify({
+    localStorage.setItem("kcode_e2e_thread_detail", JSON.stringify({
       schemaVersion: 1,
       summary: { schemaVersion: 1, id: "thread-1", title: "Phase 6 workbench", createdAtMs: 1, updatedAtMs: 2, archived: false },
       messages: [
@@ -2447,7 +2449,7 @@ test("hides failed patch attempts after a matching retry succeeds", async ({ pag
       contextUsage: null,
     }));
   }, { activities });
-  await page.reload();
+  await page.reload({ waitUntil: "domcontentloaded" });
   await page.getByText("执行了 36ms", { exact: true }).click();
   await expect(page.getByText("5 个操作", { exact: true })).toBeVisible();
   const restoredMessage = await assertProjection();
@@ -2455,7 +2457,7 @@ test("hides failed patch attempts after a matching retry succeeds", async ({ pag
 });
 
 test("edits global and project mcp.json directly", async ({ page }, testInfo) => {
-  await page.goto("/");
+  await page.goto("/", { waitUntil: "domcontentloaded" });
   await page.locator('button[aria-label="设置"]:visible').click();
   const dialog = page.getByRole("dialog");
   await dialog.getByRole("button", { name: "MCP", exact: true }).click();
@@ -2537,7 +2539,7 @@ test("edits global and project mcp.json directly", async ({ page }, testInfo) =>
 
 test("keeps the MCP settings layout bounded at responsive breakpoints", async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== "desktop", "One responsive sweep is sufficient");
-  await page.goto("/");
+  await page.goto("/", { waitUntil: "domcontentloaded" });
   await page.locator('button[aria-label="设置"]:visible').click();
   const dialog = page.getByRole("dialog");
   await dialog.getByRole("button", { name: "MCP", exact: true }).click();
@@ -2573,9 +2575,9 @@ test("keeps the MCP settings layout bounded at responsive breakpoints", async ({
 
 test("renders the MCP settings tool in dark mode", async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== "desktop", "One dark-theme visual check is sufficient");
-  await page.goto("/");
-  await page.evaluate(() => localStorage.setItem("kcoder_theme", "dark"));
-  await page.reload();
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  await page.evaluate(() => localStorage.setItem("kcode_theme", "dark"));
+  await page.reload({ waitUntil: "domcontentloaded" });
   await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
   await page.locator('button[aria-label="设置"]:visible').click();
   const dialog = page.getByRole("dialog");
@@ -2589,7 +2591,7 @@ test("renders the MCP settings tool in dark mode", async ({ page }, testInfo) =>
 });
 
 test("manages local plugins from backend facts", async ({ page }, testInfo) => {
-  await page.goto("/");
+  await page.goto("/", { waitUntil: "domcontentloaded" });
   await page.locator('button[aria-label="设置"]:visible').click();
   const settings = page.getByRole("dialog", { name: "设置" });
   await settings.getByRole("button", { name: "插件管理" }).click();
@@ -2600,7 +2602,7 @@ test("manages local plugins from backend facts", async ({ page }, testInfo) => {
   ).__invocationArgs.plugin_overview)).toEqual({ refresh: true });
   await expect(settings.getByTitle("D:\\code\\KCode\\.kcode\\plugins", { exact: true })).toContainText(/\.kcode\\plugins/);
 
-  await page.evaluate(() => localStorage.setItem("kcoder_e2e_attachment_dialog_paths", JSON.stringify("D:\\plugins\\portable")));
+  await page.evaluate(() => localStorage.setItem("kcode_e2e_attachment_dialog_paths", JSON.stringify("D:\\plugins\\portable")));
   await settings.getByRole("button", { name: "安装到本地" }).click();
   await expect.poll(() => page.evaluate(() => (
     window as unknown as { __invocationArgs: Record<string, unknown> }
@@ -2610,7 +2612,7 @@ test("manages local plugins from backend facts", async ({ page }, testInfo) => {
   });
   await expect(settings.locator(".plugin-row").filter({ hasText: "installed-local" })).toBeVisible();
 
-  await page.evaluate(() => localStorage.setItem("kcoder_e2e_attachment_dialog_paths", JSON.stringify("D:\\plugins\\project")));
+  await page.evaluate(() => localStorage.setItem("kcode_e2e_attachment_dialog_paths", JSON.stringify("D:\\plugins\\project")));
   await settings.getByRole("button", { name: "安装到项目" }).click();
   await expect.poll(() => page.evaluate(() => (
     window as unknown as { __invocationArgs: Record<string, unknown> }
@@ -2666,9 +2668,9 @@ test("manages local plugins from backend facts", async ({ page }, testInfo) => {
 
 test("restores local plugin facts after a rejected toggle", async ({ page }) => {
   await page.addInitScript(() => {
-    localStorage.setItem("kcoder_e2e_plugin_toggle_error", "review-tools@local");
+    localStorage.setItem("kcode_e2e_plugin_toggle_error", "review-tools@local");
   });
-  await page.goto("/");
+  await page.goto("/", { waitUntil: "domcontentloaded" });
   await page.locator('button[aria-label="设置"]:visible').click();
   const settings = page.getByRole("dialog", { name: "设置" });
   await settings.getByRole("button", { name: "插件管理" }).click();
@@ -2685,7 +2687,7 @@ test("restores local plugin facts after a rejected toggle", async ({ page }) => 
 
 test("keeps local plugin settings bounded and renders the empty state", async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== "desktop", "One responsive sweep is sufficient");
-  await page.goto("/");
+  await page.goto("/", { waitUntil: "domcontentloaded" });
   await page.locator('button[aria-label="设置"]:visible').click();
   const settings = page.getByRole("dialog", { name: "设置" });
   await settings.getByRole("button", { name: "插件管理" }).click();
@@ -2708,15 +2710,15 @@ test("keeps local plugin settings bounded and renders the empty state", async ({
     expect(bounds.pageScrollWidth).toBeLessThanOrEqual(bounds.pageClientWidth + 1);
   }
 
-  await page.evaluate(() => localStorage.setItem("kcoder_e2e_plugin_empty", "true"));
+  await page.evaluate(() => localStorage.setItem("kcode_e2e_plugin_empty", "true"));
   await settings.getByRole("button", { name: "刷新插件" }).click();
   await expect(settings.getByText("未发现插件", { exact: true })).toBeVisible();
 });
 
 test("renders local plugin settings in dark mode", async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== "desktop", "One dark-theme visual check is sufficient");
-  await page.addInitScript(() => localStorage.setItem("kcoder_theme", "dark"));
-  await page.goto("/");
+  await page.addInitScript(() => localStorage.setItem("kcode_theme", "dark"));
+  await page.goto("/", { waitUntil: "domcontentloaded" });
   await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
   await page.locator('button[aria-label="设置"]:visible').click();
   const settings = page.getByRole("dialog", { name: "设置" });
@@ -2737,10 +2739,10 @@ test("professional workspace stays readable and stable in both appearances", asy
   ]) {
     await page.setViewportSize({ width: 1280, height: 820 });
     await page.addInitScript(({ theme, background }) => {
-      localStorage.setItem("kcoder_theme", theme);
-      localStorage.setItem("kcoder_background_enabled", String(background));
+      localStorage.setItem("kcode_theme", theme);
+      localStorage.setItem("kcode_background_enabled", String(background));
     }, { theme, background });
-    await page.goto("/");
+    await page.goto("/", { waitUntil: "domcontentloaded" });
     await expect(page.getByRole("heading", { name: "Phase 6 workbench" })).toBeVisible();
     const reading = await page.evaluate(() => {
       const css = getComputedStyle(document.documentElement);
@@ -2817,8 +2819,8 @@ test("professional workspace primary actions keep readable text on hover", async
   // The scheduled-task navigation belongs to the desktop sidebar.
   await page.setViewportSize({ width: 1280, height: 820 });
   for (const theme of ["dark", "light"]) {
-    await page.addInitScript((value) => localStorage.setItem("kcoder_theme", value), theme);
-    await page.goto("/");
+    await page.addInitScript((value) => localStorage.setItem("kcode_theme", value), theme);
+    await page.goto("/", { waitUntil: "domcontentloaded" });
     await page.evaluate(() => {
       const internals = (window as unknown as { __TAURI_INTERNALS__: { invoke: (command: string, args?: unknown) => Promise<unknown> } }).__TAURI_INTERNALS__;
       const invoke = internals.invoke;
@@ -2843,12 +2845,12 @@ test("professional workspace primary actions keep readable text on hover", async
 });
 
 test("supports a light CodeBuddy appearance", async ({ page }) => {
-  await page.goto("/");
+  await page.goto("/", { waitUntil: "domcontentloaded" });
   await page.evaluate(() => {
-    localStorage.setItem("kcoder_skin", "codebuddy");
-    localStorage.setItem("kcoder_theme", "light");
+    localStorage.setItem("kcode_skin", "codebuddy");
+    localStorage.setItem("kcode_theme", "light");
   });
-  await page.reload();
+  await page.reload({ waitUntil: "domcontentloaded" });
 
   await expect(page.locator("html")).toHaveAttribute("data-skin", "codebuddy");
   await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
@@ -2872,7 +2874,7 @@ test("supports a light CodeBuddy appearance", async ({ page }) => {
 });
 
 test("selects and persists the extended appearance themes", async ({ page }) => {
-  await page.goto("/");
+  await page.goto("/", { waitUntil: "domcontentloaded" });
   await page.locator('button[aria-label="设置"]:visible').click();
 
   const settings = page.getByRole("dialog", { name: "设置" });
@@ -2899,15 +2901,15 @@ test("selects and persists the extended appearance themes", async ({ page }) => 
   await expect(page.locator("html")).toHaveAttribute("data-theme", "synthwave");
   await expect(page.locator("html")).toHaveAttribute("data-theme-preference", "synthwave");
 
-  await page.reload();
+  await page.reload({ waitUntil: "domcontentloaded" });
   await expect(page.locator("html")).toHaveAttribute("data-theme", "synthwave");
   await expect(page.locator("html")).toHaveAttribute("data-theme-preference", "synthwave");
 });
 
 test("resolves the system appearance and follows system changes", async ({ page }) => {
   await page.emulateMedia({ colorScheme: "dark" });
-  await page.addInitScript(() => localStorage.setItem("kcoder_theme", "system"));
-  await page.goto("/");
+  await page.addInitScript(() => localStorage.setItem("kcode_theme", "system"));
+  await page.goto("/", { waitUntil: "domcontentloaded" });
   await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
   await expect(page.locator("html")).toHaveAttribute("data-theme-preference", "system");
 
@@ -2925,10 +2927,10 @@ test("keeps the K brand and renders a distinct command-pulse welcome mark", asyn
       updatedAtMs: 1,
       archived: false,
     };
-    localStorage.setItem("kcoder_e2e_threads", JSON.stringify([emptyThread]));
-    localStorage.setItem("kcoder_e2e_empty_thread_id", emptyThread.id);
-    localStorage.setItem("kcoder_e2e_read_delay_ms", "900");
-    localStorage.setItem("kcoder_e2e_thread_detail", JSON.stringify({
+    localStorage.setItem("kcode_e2e_threads", JSON.stringify([emptyThread]));
+    localStorage.setItem("kcode_e2e_empty_thread_id", emptyThread.id);
+    localStorage.setItem("kcode_e2e_read_delay_ms", "900");
+    localStorage.setItem("kcode_e2e_thread_detail", JSON.stringify({
       schemaVersion: 1,
       summary: emptyThread,
       messages: [],
@@ -2944,7 +2946,7 @@ test("keeps the K brand and renders a distinct command-pulse welcome mark", asyn
       lastUsage: null,
     }));
   });
-  await page.goto("/");
+  await page.goto("/", { waitUntil: "domcontentloaded" });
 
   const welcome = page.locator(".empty-thread--welcome");
   await expect(page.getByText("正在读取会话", { exact: true })).toBeVisible();
@@ -2971,7 +2973,7 @@ test("uses the black-and-white K brand and rebuilds the native Windows icon reso
 
 test("resizes both layout dividers and restores preferred widths after responsive changes", async ({ page }) => {
   await page.setViewportSize({ width: 1536, height: 900 });
-  await page.goto("/");
+  await page.goto("/", { waitUntil: "domcontentloaded" });
   await page.getByRole("button", { name: "工作台", exact: true }).click();
   const left = page.getByRole("separator", { name: "调整侧边栏宽度" });
   const right = page.getByRole("separator", { name: "调整右侧面板宽度" });
@@ -3027,7 +3029,7 @@ test("resizes both layout dividers and restores preferred widths after responsiv
   await expect(page.locator(".composer textarea")).toHaveValue("保留拖动后的草稿");
   await expect.poll(() => width(".sidebar")).toBeCloseTo(initialLeft + 70, 0);
   await expect.poll(() => width(".workbench-panel")).toBeCloseTo(preferredRight, 0);
-  await page.reload();
+  await page.reload({ waitUntil: "domcontentloaded" });
   await page.getByRole("button", { name: "工作台", exact: true }).click();
   await expect.poll(() => width(".sidebar")).toBeCloseTo(initialLeft + 70, 0);
   await expect.poll(() => width(".workbench-panel")).toBeCloseTo(preferredRight, 0);
@@ -3040,7 +3042,7 @@ test("resizes both layout dividers and restores preferred widths after responsiv
 test("bounds divider dragging across an iframe and releases capture on cancellation", async ({ page }) => {
   await page.setViewportSize({ width: 1536, height: 900 });
   await page.route("https://resize.example.test/**", (route) => route.fulfill({ contentType: "text/html; charset=utf-8", body: "<input aria-label='网页输入' value='页面保持挂载'>" }));
-  await page.goto("/");
+  await page.goto("/", { waitUntil: "domcontentloaded" });
   await page.getByRole("button", { name: "工作台", exact: true }).click();
   await page.getByRole("tab", { name: "浏览器" }).click();
   await page.getByRole("textbox", { name: "网址" }).fill("https://resize.example.test/");
@@ -3078,7 +3080,7 @@ test("bounds divider dragging across an iframe and releases capture on cancellat
 
 test("keeps background dividers below the change review dialog", async ({ page }) => {
   await page.setViewportSize({ width: 1536, height: 900 });
-  await page.goto("/");
+  await page.goto("/", { waitUntil: "domcontentloaded" });
   await page.getByRole("button", { name: "工作台", exact: true }).click();
   await page.locator(".changes-toggle").first().click();
   await page.locator(".change-file-item").first().click();
@@ -3091,9 +3093,9 @@ test("keeps background dividers below the change review dialog", async ({ page }
 });
 
 test("ignores malformed saved panel widths and still allows resizing", async ({ page }) => {
-  await page.addInitScript(() => localStorage.setItem("kcoder_panel_widths_v1", '{"sidebar":-100,"panel":"900"}'));
+  await page.addInitScript(() => localStorage.setItem("kcode_panel_widths_v1", '{"sidebar":-100,"panel":"900"}'));
   await page.setViewportSize({ width: 1536, height: 900 });
-  await page.goto("/");
+  await page.goto("/", { waitUntil: "domcontentloaded" });
   await page.getByRole("button", { name: "工作台", exact: true }).click();
   const left = page.getByRole("separator", { name: "调整侧边栏宽度" });
   const right = page.getByRole("separator", { name: "调整右侧面板宽度" });
@@ -3106,7 +3108,7 @@ test("ignores malformed saved panel widths and still allows resizing", async ({ 
 
 test("keeps the mid-width workbench bounded without toolbar overflow", async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 1097, height: 820 });
-  await page.goto("/");
+  await page.goto("/", { waitUntil: "domcontentloaded" });
   await expect(page.getByRole("heading", { name: "Phase 6 workbench" })).toBeVisible();
   await page.getByRole("button", { name: "工作台", exact: true }).click();
 
@@ -3133,7 +3135,7 @@ test("keeps the mid-width workbench bounded without toolbar overflow", async ({ 
 
 test("keeps messages, composer, and send action inside the conversation when the workbench opens", async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 1536, height: 900 });
-  await page.goto("/");
+  await page.goto("/", { waitUntil: "domcontentloaded" });
   await expect(page.getByRole("heading", { name: "Phase 6 workbench" })).toBeVisible();
   await page.getByRole("button", { name: "工作台", exact: true }).click();
 
@@ -3175,20 +3177,20 @@ test("selects the active workspace project from the composer", async ({ page }, 
   await page.addInitScript(() => {
     const currentPath = "\\\\?\\D:\\code\\KCode";
     // A stale presentation-only project group must not override the persisted thread workspace.
-    localStorage.setItem("kcoder_thread_project_map", JSON.stringify({ "thread-1": "D:\\code\\paypro-platform-be" }));
-    localStorage.setItem("kcoder_known_projects", JSON.stringify([
+    localStorage.setItem("kcode_thread_project_map", JSON.stringify({ "thread-1": "D:\\code\\paypro-platform-be" }));
+    localStorage.setItem("kcode_known_projects", JSON.stringify([
       "\\\\?\\D:\\code\\paypro-platform-be",
       "\\\\?\\UNC\\server\\share\\repo",
     ]));
-    localStorage.setItem("kcoder_e2e_workspace_path", currentPath);
-    localStorage.setItem("kcoder_e2e_thread_workspace_path", currentPath);
-    localStorage.setItem("kcoder_e2e_recent_projects", JSON.stringify([
+    localStorage.setItem("kcode_e2e_workspace_path", currentPath);
+    localStorage.setItem("kcode_e2e_thread_workspace_path", currentPath);
+    localStorage.setItem("kcode_e2e_recent_projects", JSON.stringify([
       { id: "project-1", name: "KCode", path: currentPath, trusted: true, lastOpenedAtMs: 3 },
       { id: "project-2", name: "paypro-platform-be", path: "\\\\?\\D:\\code\\paypro-platform-be", trusted: true, lastOpenedAtMs: 2 },
       { id: "project-3", name: "shared-repo", path: "\\\\?\\UNC\\server\\share\\repo", trusted: true, lastOpenedAtMs: 1 },
     ]));
   });
-  await page.goto("/");
+  await page.goto("/", { waitUntil: "domcontentloaded" });
   const composer = page.locator(".composer");
   const initialTrigger = composer.getByRole("button", { name: "当前项目 KCode" });
   await expect(initialTrigger).toBeVisible();
@@ -3246,8 +3248,8 @@ test("selects the active workspace project from the composer", async ({ page }, 
 });
 
 test("reports system opener failures inside the file preview", async ({ page }) => {
-  await page.goto("/");
-  await page.evaluate(() => localStorage.setItem("kcoder_e2e_external_open_error", "系统无法打开该文件"));
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  await page.evaluate(() => localStorage.setItem("kcode_e2e_external_open_error", "系统无法打开该文件"));
   await page.getByRole("button", { name: "工作台", exact: true }).click();
   await page.getByRole("button", { name: /README\.md/ }).click();
 
@@ -3255,7 +3257,7 @@ test("reports system opener failures inside the file preview", async ({ page }) 
   await preview.getByRole("button", { name: "使用系统编辑器打开" }).click();
   await expect(preview.getByRole("alert")).toContainText("系统无法打开该文件");
 
-  await page.evaluate(() => localStorage.removeItem("kcoder_e2e_external_open_error"));
+  await page.evaluate(() => localStorage.removeItem("kcode_e2e_external_open_error"));
   await preview.getByRole("button", { name: "在资源管理器中定位" }).click();
   await expect.poll(() => page.evaluate(() => (
     window as unknown as { __invoked: string[] }
@@ -3263,7 +3265,7 @@ test("reports system opener failures inside the file preview", async ({ page }) 
 });
 
 test("creates a standalone conversation from the lower-left project menu", async ({ page }, testInfo) => {
-  await page.goto("/");
+  await page.goto("/", { waitUntil: "domcontentloaded" });
   const composer = page.locator(".composer");
   await composer.getByRole("button", { name: "当前项目 KCode" }).click();
 
@@ -3315,20 +3317,20 @@ test("creates a standalone conversation from the lower-left project menu", async
 });
 
 test("keeps a migrated unbound project thread in the current project", async ({ page }) => {
-  await page.goto("/");
+  await page.goto("/", { waitUntil: "domcontentloaded" });
   await page.evaluate(() => {
-    localStorage.setItem("kcoder_e2e_thread_override", JSON.stringify({
+    localStorage.setItem("kcode_e2e_thread_override", JSON.stringify({
       title: "Legacy project conversation",
       inProject: true,
       workspacePath: null,
     }));
-    localStorage.removeItem("kcoder_thread_project_map");
+    localStorage.removeItem("kcode_thread_project_map");
   });
-  await page.reload();
+  await page.reload({ waitUntil: "domcontentloaded" });
 
   await expect(page.locator(".composer").getByRole("button", { name: "当前项目 KCode" })).toBeVisible();
   await expect.poll(() => page.evaluate(() => {
-    const raw = localStorage.getItem("kcoder_thread_project_map");
+    const raw = localStorage.getItem("kcode_thread_project_map");
     return raw ? (JSON.parse(raw) as Record<string, string>)["thread-1"] : null;
   })).toBe("D:\\code\\KCode");
 });
@@ -3337,17 +3339,17 @@ test("keeps project selection in sync and removes groups without deleting conver
   await page.addInitScript(() => {
     const currentPath = "D:\\code\\KCode";
     const codexPath = "D:\\code\\codex";
-    localStorage.setItem("kcoder_thread_project_map", JSON.stringify({ "thread-1": currentPath }));
-    localStorage.setItem("kcoder_known_projects", JSON.stringify([currentPath, codexPath]));
-    localStorage.setItem("kcoder_e2e_workspace_path", currentPath);
-    localStorage.setItem("kcoder_e2e_recent_projects", JSON.stringify([
+    localStorage.setItem("kcode_thread_project_map", JSON.stringify({ "thread-1": currentPath }));
+    localStorage.setItem("kcode_known_projects", JSON.stringify([currentPath, codexPath]));
+    localStorage.setItem("kcode_e2e_workspace_path", currentPath);
+    localStorage.setItem("kcode_e2e_recent_projects", JSON.stringify([
       { id: "project-1", name: "KCode", path: currentPath, trusted: true, lastOpenedAtMs: 4 },
       { id: "project-2", name: "codex", path: codexPath, trusted: true, lastOpenedAtMs: 3 },
       { id: "project-3", name: "Nick", path: "D:\\code\\Nick", trusted: true, lastOpenedAtMs: 2 },
       { id: "project-4", name: "src-tauri", path: "D:\\code\\Nick\\KCode\\src-tauri", trusted: true, lastOpenedAtMs: 1 },
     ]));
   });
-  await page.goto("/");
+  await page.goto("/", { waitUntil: "domcontentloaded" });
 
   const composer = page.locator(".composer");
   const projectTrigger = composer.getByRole("button", { name: "当前项目 KCode" });
@@ -3406,19 +3408,19 @@ test("keeps project selection in sync and removes groups without deleting conver
     await expect(page.getByRole("navigation", { name: "会话列表" }).getByText("Phase 6 workbench", { exact: true })).toBeVisible();
     await expect(composer.getByRole("button", { name: "当前项目 KCode" })).toBeVisible();
     await expect.poll(() => page.evaluate(() => JSON.parse(
-      localStorage.getItem("kcoder_hidden_project_groups") ?? "[]",
+      localStorage.getItem("kcode_hidden_project_groups") ?? "[]",
     ))).toEqual(["D:\\code\\KCode"]);
     await expect.poll(() => page.evaluate(() => JSON.parse(
-      localStorage.getItem("kcoder_known_projects") ?? "[]",
+      localStorage.getItem("kcode_known_projects") ?? "[]",
     ))).toEqual(["D:\\code\\codex"]);
     await expect.poll(() => page.evaluate(() => JSON.parse(
-      localStorage.getItem("kcoder_thread_project_map") ?? "{}",
+      localStorage.getItem("kcode_thread_project_map") ?? "{}",
     )["thread-1"])).toBe("D:\\code\\KCode");
     expect(await page.evaluate(() => (
       window as unknown as { __invoked: string[] }
     ).__invoked.filter((command) => command === "delete_thread").length)).toBe(0);
 
-    await page.reload();
+    await page.reload({ waitUntil: "domcontentloaded" });
     await expect(page.getByRole("navigation", { name: "会话列表" }).getByText("Phase 6 workbench", { exact: true })).toBeVisible();
     await page.getByRole("tab", { name: "项目" }).click();
     const restoredProjectList = page.getByRole("navigation", { name: "项目列表" });
@@ -3434,7 +3436,7 @@ test("keeps project selection in sync and removes groups without deleting conver
     await expect(restoredProjectList.locator(".project-group")).toHaveCount(2);
     await expect(restoredProjectList.getByText("KCode", { exact: true })).toBeVisible();
     await expect.poll(() => page.evaluate(() => JSON.parse(
-      localStorage.getItem("kcoder_hidden_project_groups") ?? "[]",
+      localStorage.getItem("kcode_hidden_project_groups") ?? "[]",
     ))).toEqual([]);
   }
 
@@ -3442,7 +3444,7 @@ test("keeps project selection in sync and removes groups without deleting conver
 });
 
 test("selects and persists the global reasoning effort", async ({ page }) => {
-  await page.goto("/");
+  await page.goto("/", { waitUntil: "domcontentloaded" });
   const trigger = page.getByRole("button", { name: "选择推理强度" });
   await expect(trigger).toContainText("推理 中");
   await trigger.click();
@@ -3454,7 +3456,7 @@ test("selects and persists the global reasoning effort", async ({ page }) => {
 });
 
 test("keeps activity visible without a missing reasoning summary notice", async ({ page }) => {
-  await page.goto("/");
+  await page.goto("/", { waitUntil: "domcontentloaded" });
   await expect(page.getByRole("heading", { name: "Phase 6 workbench" })).toBeVisible();
 
   await emitDisclosureEvents(page, [
@@ -3489,7 +3491,7 @@ test("keeps activity visible without a missing reasoning summary notice", async 
 });
 
 test("keeps the first visible reasoning snapshot when a later delta becomes generic", async ({ page }) => {
-  await page.goto("/");
+  await page.goto("/", { waitUntil: "domcontentloaded" });
   await expect(page.getByRole("heading", { name: "Phase 6 workbench" })).toBeVisible();
 
   const emit = (event: Record<string, unknown>) => page.evaluate((payload) => {
@@ -3522,7 +3524,7 @@ test("keeps the first visible reasoning snapshot when a later delta becomes gene
 });
 
 test("shows the public English reasoning summary emitted by StepFun", async ({ page }) => {
-  await page.goto("/");
+  await page.goto("/", { waitUntil: "domcontentloaded" });
   await expect(page.getByRole("heading", { name: "Phase 6 workbench" })).toBeVisible();
 
   const stepSummary = "I inspected the relevant files.\n\n```rust\nfn verify_step_summary() {}\n```";
@@ -3549,10 +3551,10 @@ test("shows the public English reasoning summary emitted by StepFun", async ({ p
 
 test("streams thinking, safe reasoning summaries, compact command states, and file diffs inline", async ({ page, context }, testInfo) => {
   await context.grantPermissions(["clipboard-read", "clipboard-write"]);
-  await page.goto("/");
+  await page.goto("/", { waitUntil: "domcontentloaded" });
   await expect(page.getByRole("heading", { name: "Phase 6 workbench" })).toBeVisible();
   await page.evaluate(() => {
-    localStorage.setItem("kcoder_theme", "dark");
+    localStorage.setItem("kcode_theme", "dark");
     document.documentElement.dataset.theme = "dark";
   });
 
@@ -3684,8 +3686,8 @@ test("renders streamed assistant markdown as structured content", async ({ page 
   await page.goto("/", { waitUntil: "domcontentloaded" });
   await expect(page.getByRole("heading", { name: "Phase 6 workbench" })).toBeVisible();
   await page.evaluate(() => {
-    localStorage.setItem("kcoder_skin", "codebuddy");
-    localStorage.setItem("kcoder_theme", "dark");
+    localStorage.setItem("kcode_skin", "codebuddy");
+    localStorage.setItem("kcode_theme", "dark");
   });
   await page.reload({ waitUntil: "domcontentloaded" });
 
@@ -3717,7 +3719,7 @@ test("renders streamed assistant markdown as structured content", async ({ page 
 
 test("copies the user message text with the copy button", async ({ page, context }) => {
   await context.grantPermissions(["clipboard-read", "clipboard-write"]);
-  await page.goto("/");
+  await page.goto("/", { waitUntil: "domcontentloaded" });
   await expect(page.getByRole("heading", { name: "Phase 6 workbench" })).toBeVisible();
 
   const userMessage = page.locator(".message--user").first();
@@ -3749,7 +3751,7 @@ test("copies the user message text with the copy button", async ({ page, context
 
 test("navigates between user prompts and preserves their bookmarks", async ({ page }, testInfo) => {
   await page.emulateMedia({ reducedMotion: "reduce" });
-  await page.goto("/");
+  await page.goto("/", { waitUntil: "domcontentloaded" });
   await expect(page.getByRole("heading", { name: "Phase 6 workbench" })).toBeVisible();
 
   const longReply = Array.from(
@@ -3757,7 +3759,7 @@ test("navigates between user prompts and preserves their bookmarks", async ({ pa
     (_, index) => `第一轮助手回复第 ${index + 1} 段，用来让后续请求位于当前视口之外。`,
   ).join("\n\n");
   await page.evaluate((reply) => {
-    localStorage.setItem("kcoder_e2e_thread_detail", JSON.stringify({
+    localStorage.setItem("kcode_e2e_thread_detail", JSON.stringify({
       schemaVersion: 1,
       summary: { schemaVersion: 1, id: "thread-1", title: "Phase 6 workbench", createdAtMs: 1, updatedAtMs: 4, archived: false },
       messages: [
@@ -3771,7 +3773,7 @@ test("navigates between user prompts and preserves their bookmarks", async ({ pa
       toolActivities: [], turnTimeline: [], approvals: [], changes: [],
     }));
   }, longReply);
-  await page.reload();
+  await page.reload({ waitUntil: "domcontentloaded" });
 
   const navigator = page.getByRole("navigation", { name: "用户消息导航" });
   await expect(navigator).toBeVisible();
@@ -3822,14 +3824,14 @@ test("navigates between user prompts and preserves their bookmarks", async ({ pa
 
   await anchors.nth(1).getByRole("button", { name: /跳转到用户消息：找到这个对话/ }).click();
   await expect.poll(() => messageArea.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
-  await page.reload();
+  await page.reload({ waitUntil: "domcontentloaded" });
   const restoredFirstAnchor = page.locator(".conversation-message-anchor").first();
   await restoredFirstAnchor.getByRole("button", { name: /跳转到用户消息：检查第一轮问题/ }).hover();
   await expect(restoredFirstAnchor.getByRole("button", { name: "取消收藏这条消息" })).toHaveAttribute("aria-pressed", "true");
 });
 
 test("wakes workspace files with @ and enabled Skills with /", async ({ page }) => {
-  await page.goto("/");
+  await page.goto("/", { waitUntil: "domcontentloaded" });
   const composer = page.getByRole("textbox", { name: "消息" });
 
   await composer.fill("@");
@@ -3854,7 +3856,7 @@ test("wakes workspace files with @ and enabled Skills with /", async ({ page }) 
 });
 
 test("paces streamed text and preserves timeline order before tools and completion", async ({ page }) => {
-  await page.goto("/");
+  await page.goto("/", { waitUntil: "domcontentloaded" });
   const emit = (event: Record<string, unknown>) => page.evaluate((payload) => {
     (window as unknown as { __emitAgentEvent: (value: unknown) => void }).__emitAgentEvent(payload);
   }, event);
@@ -3917,7 +3919,7 @@ test("paces streamed text and preserves timeline order before tools and completi
 });
 
 test("clears failed provider attempt drafts before retry output", async ({ page }) => {
-  await page.goto("/");
+  await page.goto("/", { waitUntil: "domcontentloaded" });
   const emit = (event: Record<string, unknown>) => page.evaluate((payload) => {
     (window as unknown as { __emitAgentEvent: (value: unknown) => void }).__emitAgentEvent(payload);
   }, event);
@@ -3952,7 +3954,7 @@ test("clears failed provider attempt drafts before retry output", async ({ page 
 });
 
 test("shows elapsed time, reconnect progress, and reasoning hint in the live status line", async ({ page }) => {
-  await page.goto("/");
+  await page.goto("/", { waitUntil: "domcontentloaded" });
   const emit = (event: Record<string, unknown>) => page.evaluate((payload) => {
     (window as unknown as { __emitAgentEvent: (value: unknown) => void }).__emitAgentEvent(payload);
   }, event);
@@ -3986,7 +3988,7 @@ test("shows elapsed time, reconnect progress, and reasoning hint in the live sta
 });
 
 test("keeps the active tool open and folds it as soon as it finishes", async ({ page }) => {
-  await page.goto("/");
+  await page.goto("/", { waitUntil: "domcontentloaded" });
   const emit = (event: Record<string, unknown>) => page.evaluate((payload) => {
     (window as unknown as { __emitAgentEvent: (value: unknown) => void }).__emitAgentEvent(payload);
   }, event);
@@ -4036,7 +4038,7 @@ test("keeps the active tool open and folds it as soon as it finishes", async ({ 
 });
 
 test("keeps safe reasoning between tool calls inside one activity group", async ({ page }) => {
-  await page.goto("/");
+  await page.goto("/", { waitUntil: "domcontentloaded" });
   const emit = (event: Record<string, unknown>) => page.evaluate((payload) => {
     (window as unknown as { __emitAgentEvent: (value: unknown) => void }).__emitAgentEvent(payload);
   }, event);
@@ -4079,7 +4081,7 @@ test("keeps safe reasoning between tool calls inside one activity group", async 
 });
 
 test("uses an unframed disclosure and scrolls long multi-command groups", async ({ page }, testInfo) => {
-  await page.goto("/");
+  await page.goto("/", { waitUntil: "domcontentloaded" });
   await page.evaluate(() => {
     const emit = (window as unknown as { __emitAgentEvent: (value: unknown) => void }).__emitAgentEvent;
     const base = { schemaVersion: 1, threadId: "thread-1", turnId: "turn-command-scroll" };
@@ -4145,7 +4147,7 @@ test("uses an unframed disclosure and scrolls long multi-command groups", async 
 });
 
 test("follows streamed growth only while the conversation remains near the latest content", async ({ page }) => {
-  await page.goto("/");
+  await page.goto("/", { waitUntil: "domcontentloaded" });
   const area = page.locator(".message-area");
   await area.evaluate((element) => {
     const target = element as HTMLElement;
@@ -4202,7 +4204,7 @@ test("follows streamed growth only while the conversation remains near the lates
 });
 
 test("pins a scroll-to-bottom button to the conversation while the latest content is out of view", async ({ page }, testInfo) => {
-  await page.goto("/");
+  await page.goto("/", { waitUntil: "domcontentloaded" });
   const area = page.locator(".message-area");
   const button = page.locator(".scroll-to-bottom-button");
   await area.evaluate((element) => {
@@ -4274,7 +4276,7 @@ test("pins a scroll-to-bottom button to the conversation while the latest conten
 });
 
 test("sending a message returns the conversation to the latest content", async ({ page }) => {
-  await page.goto("/");
+  await page.goto("/", { waitUntil: "domcontentloaded" });
   const area = page.locator(".message-area");
   await area.evaluate((element) => {
     const target = element as HTMLElement;
@@ -4324,7 +4326,7 @@ test("sending a message returns the conversation to the latest content", async (
 });
 
 test("primary send queues behind the active turn and the queued send steers it", async ({ page }, testInfo) => {
-  await page.goto("/");
+  await page.goto("/", { waitUntil: "domcontentloaded" });
   await page.evaluate(() => {
     const emit = (window as unknown as { __emitAgentEvent: (event: unknown) => void }).__emitAgentEvent;
     emit({
@@ -4486,7 +4488,7 @@ test("primary send queues behind the active turn and the queued send steers it",
 
 test("atomically steers and removes a queued message from the backend mailbox", async ({ page }, testInfo) => {
   await page.addInitScript(() => {
-    localStorage.setItem("kcoder_e2e_mailbox", JSON.stringify({
+    localStorage.setItem("kcode_e2e_mailbox", JSON.stringify({
       threadId: "thread-1",
       activeTurnId: "turn-live-queue",
       pending: [
@@ -4513,7 +4515,7 @@ test("atomically steers and removes a queued message from the backend mailbox", 
       ],
     }));
   });
-  await page.goto("/");
+  await page.goto("/", { waitUntil: "domcontentloaded" });
 
   await expect(page.locator(".message-queue")).toContainText("队列 (2)");
   await page.locator(".queue-toggle").click();
@@ -4550,7 +4552,7 @@ test("atomically steers and removes a queued message from the backend mailbox", 
 });
 
 test("does not render a queued message in another conversation", async ({ page }) => {
-  await page.goto("/");
+  await page.goto("/", { waitUntil: "domcontentloaded" });
   await page.evaluate(() => {
     (window as unknown as { __emitAgentEvent: (event: unknown) => void }).__emitAgentEvent({
       schemaVersion: 1,
@@ -4589,7 +4591,7 @@ test("does not render a queued message in another conversation", async ({ page }
 });
 
 test("runs different conversations concurrently while keeping each conversation sequential", async ({ page }) => {
-  await page.goto("/");
+  await page.goto("/", { waitUntil: "domcontentloaded" });
   const composer = page.getByRole("textbox", { name: "消息" });
 
   await composer.fill("first conversation work");
@@ -4666,9 +4668,9 @@ test("restores an active conversation without replaying existing text or restart
       todos: [],
       lastUsage: null,
     };
-    localStorage.setItem("kcoder_e2e_threads", JSON.stringify([firstThread, secondThread]));
-    localStorage.setItem("kcoder_e2e_empty_thread_id", secondThread.id);
-    localStorage.setItem("kcoder_e2e_thread_detail_by_id", JSON.stringify({
+    localStorage.setItem("kcode_e2e_threads", JSON.stringify([firstThread, secondThread]));
+    localStorage.setItem("kcode_e2e_empty_thread_id", secondThread.id);
+    localStorage.setItem("kcode_e2e_thread_detail_by_id", JSON.stringify({
       [firstThread.id]: {
         ...emptyDetail,
         summary: firstThread,
@@ -4682,10 +4684,10 @@ test("restores an active conversation without replaying existing text or restart
       },
       [secondThread.id]: emptyDetail,
     }));
-    localStorage.setItem("kcoder_e2e_switch_progress", progress);
+    localStorage.setItem("kcode_e2e_switch_progress", progress);
   }, { progress: progressText });
 
-  await page.goto("/");
+  await page.goto("/", { waitUntil: "domcontentloaded" });
   await page.evaluate((progress) => {
     const emit = (window as unknown as { __emitAgentEvent: (event: unknown) => void }).__emitAgentEvent;
     const base = { schemaVersion: 4, threadId: "thread-1", turnId: "turn-switch-active" };
@@ -4701,7 +4703,7 @@ test("restores an active conversation without replaying existing text or restart
   await expect(page.getByText(progressText, { exact: true })).toBeVisible({ timeout: 10_000 });
 
   await page.evaluate((progress) => {
-    const details = JSON.parse(localStorage.getItem("kcoder_e2e_thread_detail_by_id") ?? "{}") as Record<string, Record<string, unknown>>;
+    const details = JSON.parse(localStorage.getItem("kcode_e2e_thread_detail_by_id") ?? "{}") as Record<string, Record<string, unknown>>;
     details["thread-1"] = {
       ...details["thread-1"],
       messageTurnIds: {},
@@ -4714,7 +4716,7 @@ test("restores an active conversation without replaying existing text or restart
         text: progress,
       }],
     };
-    localStorage.setItem("kcoder_e2e_thread_detail_by_id", JSON.stringify(details));
+    localStorage.setItem("kcode_e2e_thread_detail_by_id", JSON.stringify(details));
   }, progressText);
 
   await page.locator(".thread-item-main").filter({ hasText: "Parallel conversation" })
@@ -4755,7 +4757,7 @@ test("restores an active conversation without replaying existing text or restart
 });
 
 test("pastes local documents into the composer without intercepting plain text", async ({ page }, testInfo) => {
-  await page.goto("/");
+  await page.goto("/", { waitUntil: "domcontentloaded" });
   const composer = page.getByRole("textbox", { name: "消息" });
 
   const plainTextPrevented = await composer.evaluate((element) => {
@@ -4768,7 +4770,7 @@ test("pastes local documents into the composer without intercepting plain text",
   expect(plainTextPrevented).toBe(false);
 
   await composer.fill("请总结附件");
-  await page.evaluate(() => localStorage.setItem("kcoder_e2e_attachment_extract_delay_ms", "150"));
+  await page.evaluate(() => localStorage.setItem("kcode_e2e_attachment_extract_delay_ms", "150"));
   await composer.evaluate((element) => {
     const transfer = new DataTransfer();
     transfer.items.add(new File(
@@ -4782,7 +4784,6 @@ test("pastes local documents into the composer without intercepting plain text",
       clipboardData: transfer,
     }));
   });
-
   await expect(page.getByRole("button", { name: "发送消息", exact: true })).toBeDisabled();
   const pendingAttachment = page.getByLabel("待发送附件");
   await expect(pendingAttachment.getByText("release-notes.md", { exact: true })).toBeVisible();
@@ -4809,7 +4810,7 @@ test("pastes local documents into the composer without intercepting plain text",
 });
 
 test("rejects unsupported pasted files with visible feedback", async ({ page }) => {
-  await page.goto("/");
+  await page.goto("/", { waitUntil: "domcontentloaded" });
   const composer = page.getByRole("textbox", { name: "消息" });
   await composer.evaluate((element) => {
     const transfer = new DataTransfer();
@@ -4829,10 +4830,10 @@ test("rejects unsupported pasted files with visible feedback", async ({ page }) 
 });
 
 test("allows selecting any file before reporting unsupported formats", async ({ page }) => {
-  await page.goto("/");
+  await page.goto("/", { waitUntil: "domcontentloaded" });
   await page.evaluate(() => {
     localStorage.setItem(
-      "kcoder_e2e_attachment_dialog_paths",
+      "kcode_e2e_attachment_dialog_paths",
       JSON.stringify(["C:\\fixtures\\archive.zip"]),
     );
   });
@@ -4878,10 +4879,10 @@ test("keeps local attachment reads limited to dynamically scoped fs commands", a
 });
 
 test("imports Excel through Tauri native file drop without duplicate DOM handling", async ({ page }) => {
-  await page.goto("/");
+  await page.goto("/", { waitUntil: "domcontentloaded" });
   await page.evaluate(() => {
     localStorage.setItem(
-      "kcoder_e2e_attachment_file_bytes",
+      "kcode_e2e_attachment_file_bytes",
       JSON.stringify([0x50, 0x4b, 0x03, 0x04]),
     );
   });
@@ -4953,14 +4954,14 @@ test("imports Excel through Tauri native file drop without duplicate DOM handlin
 });
 
 test("selects supported Excel files after a metadata size preflight", async ({ page }) => {
-  await page.goto("/");
+  await page.goto("/", { waitUntil: "domcontentloaded" });
   await page.evaluate(() => {
     localStorage.setItem(
-      "kcoder_e2e_attachment_dialog_paths",
+      "kcode_e2e_attachment_dialog_paths",
       JSON.stringify(["C:\\fixtures\\budget.xlsx"]),
     );
     localStorage.setItem(
-      "kcoder_e2e_attachment_file_bytes",
+      "kcode_e2e_attachment_file_bytes",
       JSON.stringify([0x50, 0x4b, 0x03, 0x04]),
     );
   });
@@ -4990,7 +4991,7 @@ test("selects supported Excel files after a metadata size preflight", async ({ p
 });
 
 test("pastes common Excel workbooks and sends extracted sheet content", async ({ page }) => {
-  await page.goto("/");
+  await page.goto("/", { waitUntil: "domcontentloaded" });
   const composer = page.getByRole("textbox", { name: "消息" });
   await composer.fill("请汇总预算");
   await composer.evaluate((element) => {
@@ -5029,7 +5030,7 @@ test("pastes common Excel workbooks and sends extracted sheet content", async ({
 });
 
 test("imports one image when clipboard files and items expose the same entry", async ({ page }) => {
-  await page.goto("/");
+  await page.goto("/", { waitUntil: "domcontentloaded" });
   const composer = page.getByRole("textbox", { name: "消息" });
   await composer.evaluate((element) => {
     const bytes = new Uint8Array([137, 80, 78, 71]);
@@ -5050,7 +5051,7 @@ test("imports one image when clipboard files and items expose the same entry", a
 });
 
 test("sends images without frontend text recognition and opens the conversation preview", async ({ page }, testInfo) => {
-  await page.goto("/");
+  await page.goto("/", { waitUntil: "domcontentloaded" });
   const composer = page.getByRole("textbox", { name: "消息" });
   await composer.evaluate(async (element) => {
     const transfer = new DataTransfer();
@@ -5088,7 +5089,7 @@ test("sends images without frontend text recognition and opens the conversation 
   await expect(imagePreview).toHaveCount(0);
   await page.screenshot({ path: testInfo.outputPath("image-attachment-in-user-message.png"), fullPage: true });
 
-  await page.evaluate(() => localStorage.setItem("kcoder_e2e_thread_detail", JSON.stringify({
+  await page.evaluate(() => localStorage.setItem("kcode_e2e_thread_detail", JSON.stringify({
     schemaVersion: 1,
     summary: { schemaVersion: 1, id: "thread-1", title: "Phase 6 workbench", createdAtMs: 1, updatedAtMs: 2, archived: false },
     messages: [{
@@ -5112,7 +5113,7 @@ test("sends images without frontend text recognition and opens the conversation 
     todos: [],
     lastUsage: null,
   })));
-  await page.reload();
+  await page.reload({ waitUntil: "domcontentloaded" });
   await expect(imageMessage.getByText("image-fixture.png", { exact: true })).toBeVisible();
   await expect(imageMessage.locator(".message-content")).toHaveCount(0);
   await imageMessage.getByRole("button", { name: "查看图片 image-fixture.png" }).click();
@@ -5121,8 +5122,8 @@ test("sends images without frontend text recognition and opens the conversation 
 });
 
 test("renders generated images as clickable previews and fits the full image in the viewer", async ({ page }, testInfo) => {
-  await page.goto("/");
-  await page.evaluate(() => localStorage.setItem("kcoder_e2e_thread_detail", JSON.stringify({
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  await page.evaluate(() => localStorage.setItem("kcode_e2e_thread_detail", JSON.stringify({
     schemaVersion: 1,
     summary: { schemaVersion: 1, id: "thread-1", title: "Phase 6 workbench", createdAtMs: 1, updatedAtMs: 2, archived: false },
     messages: [],
@@ -5137,7 +5138,7 @@ test("renders generated images as clickable previews and fits the full image in 
     todos: [],
     lastUsage: null,
   })));
-  await page.reload();
+  await page.reload({ waitUntil: "domcontentloaded" });
 
   const dataUrl = await page.evaluate(() => {
     const canvas = document.createElement("canvas");
@@ -5236,7 +5237,7 @@ test("renders generated images as clickable previews and fits the full image in 
 });
 
 test("opens the preview dialog from a pending composer image attachment", async ({ page }, testInfo) => {
-  await page.goto("/");
+  await page.goto("/", { waitUntil: "domcontentloaded" });
   await expect(page.getByRole("heading", { name: "Phase 6 workbench" })).toBeVisible();
   const composer = page.getByRole("textbox", { name: "消息" });
   await composer.evaluate(async (element) => {
@@ -5281,7 +5282,7 @@ test("opens the preview dialog from a pending composer image attachment", async 
 });
 
 test("queues concurrent approvals and drops an expired request", async ({ page }) => {
-  await page.goto("/");
+  await page.goto("/", { waitUntil: "domcontentloaded" });
   await expect(page.getByRole("heading", { name: "Phase 6 workbench" })).toBeVisible();
 
   await page.evaluate(() => {
@@ -5328,7 +5329,7 @@ test("queues concurrent approvals and drops an expired request", async ({ page }
 });
 
 test("streams progress and tools in event order before the turn completes", async ({ page }, testInfo) => {
-  await page.goto("/");
+  await page.goto("/", { waitUntil: "domcontentloaded" });
   const emit = (event: Record<string, unknown>) => page.evaluate((payload) => {
     (window as unknown as { __emitAgentEvent: (value: unknown) => void }).__emitAgentEvent(payload);
   }, event);
@@ -5398,7 +5399,7 @@ test("streams progress and tools in event order before the turn completes", asyn
 });
 
 test("shows the backend error instead of failed tool arguments", async ({ page }) => {
-  await page.goto("/");
+  await page.goto("/", { waitUntil: "domcontentloaded" });
   const emit = (event: Record<string, unknown>) => page.evaluate((payload) => {
     (window as unknown as { __emitAgentEvent: (value: unknown) => void }).__emitAgentEvent(payload);
   }, event);
@@ -5433,7 +5434,7 @@ test("shows the backend error instead of failed tool arguments", async ({ page }
 });
 
 test("completes and restores an approved edit test repair workflow", async ({ page }, testInfo) => {
-  await page.goto("/");
+  await page.goto("/", { waitUntil: "domcontentloaded" });
   const emit = (event: Record<string, unknown>) => page.evaluate((payload) => {
     (window as unknown as { __emitAgentEvent: (value: unknown) => void }).__emitAgentEvent(payload);
   }, event);
@@ -5561,7 +5562,7 @@ test("completes and restores an approved edit test repair workflow", async ({ pa
     { type: "text", id: "message-self-edit", turnId: "turn-self-edit", text: "修复完成，测试已经通过。" },
     { type: "event", itemId: "turn-completed-turn-self-edit", turnId: "turn-self-edit", kind: "turn_completed", title: "Turn 已完成", detail: null, durationMs: 125000 },
   ];
-  await page.evaluate((detail) => localStorage.setItem("kcoder_e2e_thread_detail", JSON.stringify(detail)), {
+  await page.evaluate((detail) => localStorage.setItem("kcode_e2e_thread_detail", JSON.stringify(detail)), {
     schemaVersion: 1,
     summary: { schemaVersion: 1, id: "thread-1", title: "Phase 6 workbench", createdAtMs: 1, updatedAtMs: 3, archived: false },
     messages: [
@@ -5575,7 +5576,7 @@ test("completes and restores an approved edit test repair workflow", async ({ pa
     approvals: [{ request: approval("approval-edit-1", firstPatchCall.id), resolution: { action: "approved", patch: null, selectedPaths: [], expectedHashes: [] } }],
     changes: [firstChange, repairedChange].map((change) => ({ ...change, needsReview: false })),
   });
-  await page.reload();
+  await page.reload({ waitUntil: "domcontentloaded" });
 
   const restoredMessage = page.locator(".message--assistant").last();
   await expect(restoredMessage.locator(".turn-timeline-tool")).toHaveCount(5);
@@ -5595,7 +5596,7 @@ test("completes and restores an approved edit test repair workflow", async ({ pa
 });
 
 test("undoes pending file review from the message change list", async ({ page }) => {
-  await page.goto("/");
+  await page.goto("/", { waitUntil: "domcontentloaded" });
   const change = {
     id: "change-undo-review",
     threadId: "thread-1",
@@ -5656,7 +5657,7 @@ test("undoes pending file review from the message change list", async ({ page })
 });
 
 test("continues batch undo after a file conflict and reports the partial result", async ({ page }) => {
-  await page.goto("/");
+  await page.goto("/", { waitUntil: "domcontentloaded" });
   const safeChange = {
     id: "change-undo-safe",
     threadId: "thread-1",
@@ -5733,7 +5734,7 @@ test("continues batch undo after a file conflict and reports the partial result"
 });
 
 test("keeps a cancelled turn busy until the terminal event and then retries", async ({ page }) => {
-  await page.goto("/");
+  await page.goto("/", { waitUntil: "domcontentloaded" });
   await page.evaluate(() => {
     const emit = (window as unknown as { __emitAgentEvent: (event: unknown) => void }).__emitAgentEvent;
     const base = { schemaVersion: 1, threadId: "thread-1", turnId: "turn-cancel" };
@@ -5787,8 +5788,8 @@ test("keeps a cancelled turn busy until the terminal event and then retries", as
 });
 
 test("allows retrying a stop request after the IPC timeout", async ({ page }) => {
-  await page.addInitScript(() => localStorage.setItem("kcoder_e2e_hold_cancel", "true"));
-  await page.goto("/");
+  await page.addInitScript(() => localStorage.setItem("kcode_e2e_hold_cancel", "true"));
+  await page.goto("/", { waitUntil: "domcontentloaded" });
   await page.evaluate(() => {
     (window as unknown as { __emitAgentEvent: (event: unknown) => void }).__emitAgentEvent({
       schemaVersion: 1,
@@ -5809,10 +5810,10 @@ test("allows retrying a stop request after the IPC timeout", async ({ page }) =>
 
 test("presents a failed turn as one actionable error disclosure", async ({ page }, testInfo) => {
   await page.addInitScript(() => {
-    localStorage.setItem("kcoder_e2e_hold_retry", "true");
-    localStorage.setItem("kcoder_theme", "dark");
+    localStorage.setItem("kcode_e2e_hold_retry", "true");
+    localStorage.setItem("kcode_theme", "dark");
   });
-  await page.goto("/");
+  await page.goto("/", { waitUntil: "domcontentloaded" });
   await page.evaluate(() => {
     const emit = (window as unknown as { __emitAgentEvent: (event: unknown) => void }).__emitAgentEvent;
     const base = { schemaVersion: 1, threadId: "thread-1", turnId: "turn-rate-limited" };
@@ -5859,8 +5860,8 @@ test("presents a failed turn as one actionable error disclosure", async ({ page 
 });
 
 test("shows retry progress before the retry IPC returns", async ({ page }) => {
-  await page.addInitScript(() => localStorage.setItem("kcoder_e2e_delay_retry", "true"));
-  await page.goto("/");
+  await page.addInitScript(() => localStorage.setItem("kcode_e2e_delay_retry", "true"));
+  await page.goto("/", { waitUntil: "domcontentloaded" });
   await page.evaluate(() => {
     const emit = (window as unknown as { __emitAgentEvent: (event: unknown) => void }).__emitAgentEvent;
     const base = { schemaVersion: 1, threadId: "thread-1", turnId: "turn-retry-pending" };
@@ -5889,8 +5890,8 @@ test("shows retry progress before the retry IPC returns", async ({ page }) => {
 });
 
 test("labels the provider call hard limit and starts a new Turn", async ({ page }) => {
-  await page.addInitScript(() => localStorage.setItem("kcoder_e2e_hold_retry", "true"));
-  await page.goto("/");
+  await page.addInitScript(() => localStorage.setItem("kcode_e2e_hold_retry", "true"));
+  await page.goto("/", { waitUntil: "domcontentloaded" });
   await page.evaluate(() => {
     const emit = (window as unknown as { __emitAgentEvent: (event: unknown) => void }).__emitAgentEvent;
     const base = { schemaVersion: 9, threadId: "thread-1", turnId: "turn-provider-call-limit" };
@@ -5928,7 +5929,7 @@ test("labels the provider call hard limit and starts a new Turn", async ({ page 
 });
 
 test("uses the exact active turn when recovering a stuck conversation", async ({ page }) => {
-  await page.goto("/");
+  await page.goto("/", { waitUntil: "domcontentloaded" });
   await page.evaluate(() => {
     (window as unknown as { __emitAgentEvent: (event: unknown) => void }).__emitAgentEvent({
       schemaVersion: 1,
@@ -5976,12 +5977,12 @@ test("keeps retry attempts in one assistant reply before and after recovery", as
     lastUsage: null,
   };
   await page.addInitScript((detail) => {
-    localStorage.setItem("kcoder_e2e_hold_retry", "true");
-    if (!localStorage.getItem("kcoder_e2e_thread_detail")) {
-      localStorage.setItem("kcoder_e2e_thread_detail", JSON.stringify(detail));
+    localStorage.setItem("kcode_e2e_hold_retry", "true");
+    if (!localStorage.getItem("kcode_e2e_thread_detail")) {
+      localStorage.setItem("kcode_e2e_thread_detail", JSON.stringify(detail));
     }
   }, failedDetail);
-  await page.goto("/");
+  await page.goto("/", { waitUntil: "domcontentloaded" });
 
   const failedExecution = page.locator(".message--activity-only .turn-execution--failed").filter({ hasText: "provider failed" });
   await expect(failedExecution).not.toHaveAttribute("open", "");
@@ -6025,8 +6026,8 @@ test("keeps retry attempts in one assistant reply before and after recovery", as
       { type: "event", itemId: "turn-completed-turn-second", turnId: "turn-second", kind: "turn_completed", title: "Turn 已完成", detail: null, durationMs: 240 },
     ],
   };
-  await page.evaluate((detail) => localStorage.setItem("kcoder_e2e_thread_detail", JSON.stringify(detail)), completedDetail);
-  await page.reload();
+  await page.evaluate((detail) => localStorage.setItem("kcode_e2e_thread_detail", JSON.stringify(detail)), completedDetail);
+  await page.reload({ waitUntil: "domcontentloaded" });
 
   const restoredGroup = page.locator(".message--retry-group");
   await expect(restoredGroup).toHaveCount(1);
@@ -6067,10 +6068,10 @@ test("does not add a second waiting row when a retry timeline is already grouped
     lastUsage: null,
   };
   await page.addInitScript((detail) => {
-    localStorage.setItem("kcoder_e2e_hold_retry", "true");
-    localStorage.setItem("kcoder_e2e_thread_detail", JSON.stringify(detail));
+    localStorage.setItem("kcode_e2e_hold_retry", "true");
+    localStorage.setItem("kcode_e2e_thread_detail", JSON.stringify(detail));
   }, failedDetail);
-  await page.goto("/");
+  await page.goto("/", { waitUntil: "domcontentloaded" });
 
   const failedExecution = page.locator(".message--activity-only .turn-execution--failed");
   await failedExecution.locator(":scope > summary").click();
@@ -6096,8 +6097,8 @@ test("does not add a second waiting row when a retry timeline is already grouped
 
 test("restores a pending user question after reopening the thread", async ({ page }) => {
   await page.addInitScript(() => {
-    localStorage.setItem("kcoder_theme", "dark");
-    localStorage.setItem("kcoder_e2e_thread_detail", JSON.stringify({
+    localStorage.setItem("kcode_theme", "dark");
+    localStorage.setItem("kcode_e2e_thread_detail", JSON.stringify({
       schemaVersion: 1,
       summary: { schemaVersion: 1, id: "thread-1", title: "Phase 6 workbench", createdAtMs: 1, updatedAtMs: 2, archived: false },
       messages: [{ schemaVersion: 1, id: "question-user", role: "user", content: [{ type: "text", text: "Plan this change" }], createdAtMs: 1 }],
@@ -6125,7 +6126,7 @@ test("restores a pending user question after reopening the thread", async ({ pag
       lastUsage: null,
     }));
   });
-  await page.goto("/");
+  await page.goto("/", { waitUntil: "domcontentloaded" });
   await expect(page.locator(".user-input-question-text").getByText("Choose an approach", { exact: true })).toBeVisible();
   await expect.poll(() => page.locator(".user-input-question-text").evaluate((element) => getComputedStyle(element).color)).toBe("rgb(230, 232, 245)");
   await expect.poll(() => page.getByRole("button", { name: "Fast", exact: true }).evaluate((element) => getComputedStyle(element).color)).toBe("rgb(230, 232, 245)");
@@ -6137,7 +6138,7 @@ test("restores a pending user question after reopening the thread", async ({ pag
 test("restores a soft turn continuation gate with direct actions", async ({ page }) => {
   const question = "当前执行段已调用模型 300 次、累计消耗 920000 tokens、运行 480 秒。如需继续，请发送“继续”（点击“继续执行”即可）。";
   await page.addInitScript((continuationQuestion) => {
-    localStorage.setItem("kcoder_e2e_thread_detail", JSON.stringify({
+    localStorage.setItem("kcode_e2e_thread_detail", JSON.stringify({
       schemaVersion: 1,
       summary: { schemaVersion: 1, id: "thread-1", title: "Long running turn", createdAtMs: 1, updatedAtMs: 2, archived: false },
       messages: [{ schemaVersion: 1, id: "continuation-user", role: "user", content: [{ type: "text", text: "Complete the task" }], createdAtMs: 1 }],
@@ -6166,7 +6167,7 @@ test("restores a soft turn continuation gate with direct actions", async ({ page
     }));
   }, question);
 
-  await page.goto("/");
+  await page.goto("/", { waitUntil: "domcontentloaded" });
   await expect(page.getByText("执行额度已用完", { exact: true })).toBeVisible();
   await expect(page.locator(".user-input-question-text").getByText(question, { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "继续执行", exact: true })).toBeVisible();
@@ -6185,8 +6186,8 @@ test("restores a soft turn continuation gate with direct actions", async ({ page
 
 test("replays live events received while a thread snapshot is loading", async ({ page }) => {
   await page.addInitScript(() => {
-    localStorage.setItem("kcoder_e2e_read_delay_ms", "500");
-    localStorage.setItem("kcoder_e2e_thread_detail", JSON.stringify({
+    localStorage.setItem("kcode_e2e_read_delay_ms", "500");
+    localStorage.setItem("kcode_e2e_thread_detail", JSON.stringify({
       schemaVersion: 1,
       summary: { schemaVersion: 1, id: "thread-1", title: "Phase 6 workbench", createdAtMs: 1, updatedAtMs: 2, archived: false },
       messages: [],
@@ -6202,7 +6203,7 @@ test("replays live events received while a thread snapshot is loading", async ({
       lastUsage: null,
     }));
   });
-  await page.goto("/");
+  await page.goto("/", { waitUntil: "domcontentloaded" });
   await expect.poll(() => page.evaluate(() => {
     try {
       (window as unknown as { __emitAgentEvent: (event: unknown) => void }).__emitAgentEvent({
@@ -6231,7 +6232,7 @@ test("replays live events received while a thread snapshot is loading", async ({
 });
 
 test("shows and starts subagent activity without a default token budget", async ({ page }) => {
-  await page.goto("/");
+  await page.goto("/", { waitUntil: "domcontentloaded" });
   await page.getByRole("button", { name: "子智能体", exact: true }).click();
   const drawer = page.getByRole("complementary", { name: "子智能体", exact: true });
   await expect(drawer.locator(".subagent-brand-mark")).toHaveCount(1);
@@ -6265,9 +6266,9 @@ test("focuses only the clicked subagent and scopes the list to its conversation"
       tokenBudget: null, tokensUsed: 420, timeoutMs: 600000, createdAtMs: index + 2,
       updatedAtMs: index + 2, summary: null, error: null, turnCount: 1,
     }));
-    localStorage.setItem("kcoder_e2e_threads", JSON.stringify(threads));
-    localStorage.setItem("kcoder_e2e_subagents", JSON.stringify(agents));
-    localStorage.setItem("kcoder_e2e_thread_detail_by_id", JSON.stringify(Object.fromEntries([
+    localStorage.setItem("kcode_e2e_threads", JSON.stringify(threads));
+    localStorage.setItem("kcode_e2e_subagents", JSON.stringify(agents));
+    localStorage.setItem("kcode_e2e_thread_detail_by_id", JSON.stringify(Object.fromEntries([
       ...threads.map((summary) => [summary.id, {
         schemaVersion: 1, summary, messages: [], messageTurnIds: {}, turnUserMessageIds: {}, lastTurn: null,
         toolActivities: [], turnTimeline: [], lastUsage: null, contextUsage: null,
@@ -6279,7 +6280,7 @@ test("focuses only the clicked subagent and scopes the list to its conversation"
       }]),
     ])));
   });
-  await page.goto("/");
+  await page.goto("/", { waitUntil: "domcontentloaded" });
   await expect(page.getByRole("heading", { name: "Phase 6 workbench", exact: true })).toBeVisible();
   await page.evaluate(() => {
     const emit = (window as unknown as { __emitAgentEvent: (event: unknown) => void }).__emitAgentEvent;
@@ -6316,7 +6317,7 @@ test("focuses only the clicked subagent and scopes the list to its conversation"
   await expect(drawer.locator(".agent-count-badge")).toHaveText("2 运行中");
   await expect(drawer.getByText("历史任务", { exact: true })).toHaveCount(0);
   await page.evaluate(() => {
-    const agents = JSON.parse(localStorage.getItem("kcoder_e2e_subagents")!) as Array<Record<string, unknown>>;
+    const agents = JSON.parse(localStorage.getItem("kcode_e2e_subagents")!) as Array<Record<string, unknown>>;
     const emit = (window as unknown as { __emitTauriEvent: (name: string, event: unknown) => void }).__emitTauriEvent;
     emit("subagent-event", { ...agents[0], state: "completed", updatedAtMs: 10 });
     emit("subagent-event", { ...agents[2], label: "其他会话实时任务", updatedAtMs: 11 });
@@ -6343,7 +6344,7 @@ test("focuses only the clicked subagent and scopes the list to its conversation"
 });
 
 test("shows every queued subagent wait before serial execution reaches it", async ({ page }, testInfo) => {
-  await page.goto("/");
+  await page.goto("/", { waitUntil: "domcontentloaded" });
   await expect.poll(() => page.evaluate(() => {
     try {
       (window as unknown as { __emitTauriEvent: (event: string, payload: unknown) => void }).__emitTauriEvent(
@@ -6439,14 +6440,14 @@ test("shows every queued subagent wait before serial execution reaches it", asyn
 
 test("batch subagent wait shows all targets and distinguishes timeout from task completion", async ({ page }, testInfo) => {
   await page.addInitScript(() => {
-    localStorage.setItem("kcoder_e2e_subagents", JSON.stringify([1, 2, 3, 4].map(n => ({
+    localStorage.setItem("kcode_e2e_subagents", JSON.stringify([1, 2, 3, 4].map(n => ({
       schemaVersion: 1, id: `batch-${n}`, parentAgentId: null, parentThreadId: "thread-1",
       threadId: `child-batch-${n}`, label: `批量任务${n}`, task: "检查文档", state: "running", depth: 1,
       workspaceRoot: "D:\\code\\KCode", capabilities: ["read_file"], tokenBudget: null,
       tokensUsed: 0, timeoutMs: 600000, createdAtMs: n, updatedAtMs: 30000, summary: null, error: null,
     }))));
   });
-  await page.goto("/");
+  await page.goto("/", { waitUntil: "domcontentloaded" });
   await expect(page.getByRole("heading", { name: "Phase 6 workbench", exact: true })).toBeVisible();
   await page.evaluate(() => {
     const emit = (window as unknown as { __emitAgentEvent: (event: unknown) => void }).__emitAgentEvent;
@@ -6501,7 +6502,7 @@ test("batch subagent wait shows all targets and distinguishes timeout from task 
 });
 
 test("shows unbounded goal token consumption and controls", async ({ page }, testInfo) => {
-  await page.goto("/");
+  await page.goto("/", { waitUntil: "domcontentloaded" });
   const goal = page.locator(".goal-slim");
   await expect(goal).toContainText("24,000 / 无上限 tokens");
   await expect(goal.locator(".goal-slim-track")).toHaveCount(0);
@@ -6519,8 +6520,8 @@ test("shows unbounded goal token consumption and controls", async ({ page }, tes
 
 test("shows recovered and live context-window progress in the composer", async ({ page }, testInfo) => {
   await page.addInitScript(() => {
-    localStorage.setItem("kcoder_theme", "dark");
-    localStorage.setItem("kcoder_e2e_thread_detail", JSON.stringify({
+    localStorage.setItem("kcode_theme", "dark");
+    localStorage.setItem("kcode_e2e_thread_detail", JSON.stringify({
       schemaVersion: 1,
       summary: {
         schemaVersion: 1,
@@ -6546,7 +6547,7 @@ test("shows recovered and live context-window progress in the composer", async (
       contextUsage: { inputTokens: 14_000, outputTokens: 1_360, totalTokens: 15_360 },
     }));
   });
-  await page.goto("/");
+  await page.goto("/", { waitUntil: "domcontentloaded" });
 
   const trigger = page.locator(".context-progress-trigger");
   const sendButton = page.getByRole("button", { name: "发送消息" });
@@ -6674,7 +6675,7 @@ test("shows recovered and live context-window progress in the composer", async (
 });
 
 test("switches providers and models from the composer footer", async ({ page }, testInfo) => {
-  await page.goto("/");
+  await page.goto("/", { waitUntil: "domcontentloaded" });
   await page.getByRole("button", { name: "切换到深色模式" }).click();
   const composer = page.locator(".composer");
   const selector = composer.getByRole("button", { name: "选择模型" });
@@ -6725,7 +6726,7 @@ test("switches providers and models from the composer footer", async ({ page }, 
 });
 
 test("explains that switching models during a turn takes effect next turn", async ({ page }) => {
-  await page.goto("/");
+  await page.goto("/", { waitUntil: "domcontentloaded" });
   const selector = page.locator(".composer").getByRole("button", { name: "选择模型" });
   await expect(selector).toContainText("GPT-4.1");
   await expect(page.locator(".toast--success")).toHaveCount(0);
@@ -6745,7 +6746,7 @@ test("explains that switching models during a turn takes effect next turn", asyn
 });
 
 test("does not announce a model switch for unchanged or failed selections", async ({ page }) => {
-  await page.goto("/");
+  await page.goto("/", { waitUntil: "domcontentloaded" });
   const selector = page.locator(".composer").getByRole("button", { name: "选择模型" });
   await expect(selector).toContainText("GPT-4.1");
   const selectionCalls = () => page.evaluate(() => (window as unknown as { __invoked: string[] })
@@ -6779,7 +6780,7 @@ test("does not announce a model switch for unchanged or failed selections", asyn
 });
 
 test("shows the actual fallback route while keeping the selected model unchanged", async ({ page }, testInfo) => {
-  await page.goto("/");
+  await page.goto("/", { waitUntil: "domcontentloaded" });
   const composer = page.locator(".composer");
   const selector = composer.getByRole("button", { name: "选择模型" });
   const fallbackStatus = composer.locator(".composer-fallback-status");
@@ -6829,7 +6830,7 @@ test("shows the actual fallback route while keeping the selected model unchanged
 });
 
 test("switches the runtime approval mode from the composer", async ({ page }, testInfo) => {
-  await page.goto("/");
+  await page.goto("/", { waitUntil: "domcontentloaded" });
   const trigger = page.getByRole("button", { name: /操作批准方式/ });
   const menu = page.getByRole("menu", { name: "操作批准方式" });
   const expectMenuWithinComposer = async () => {
@@ -6926,7 +6927,7 @@ test("switches the runtime approval mode from the composer", async ({ page }, te
 });
 
 test("configures ordered cross-provider failover from the shared settings page", async ({ page }, testInfo) => {
-  await page.goto("/");
+  await page.goto("/", { waitUntil: "domcontentloaded" });
   await page.locator('button[aria-label="设置"]:visible').click();
 
   await expect(page.getByRole("heading", { name: "模型供应商" })).toBeVisible();
@@ -7030,7 +7031,7 @@ test("searches many cross-provider routes and preserves ordering on save failure
       };
     };
   });
-  await page.goto("/");
+  await page.goto("/", { waitUntil: "domcontentloaded" });
   await page.locator('button[aria-label="设置"]:visible').click();
   await page.getByRole("button", { name: "故障切换" }).click();
   await expect(page.getByRole("button", { name: "编辑故障切换：备用 24" })).toHaveAttribute("aria-pressed", "true");
@@ -7079,7 +7080,7 @@ test("searches many cross-provider routes and preserves ordering on save failure
 });
 
 test("adds, edits, deletes, and saves structured provider models", async ({ page }) => {
-  await page.goto("/");
+  await page.goto("/", { waitUntil: "domcontentloaded" });
   await page.locator('button[aria-label="设置"]:visible').click();
 
   await page.getByRole("button", { name: "新增模型" }).click();
@@ -7104,7 +7105,7 @@ test("adds, edits, deletes, and saves structured provider models", async ({ page
 });
 
 test("exposes opt-in memory, browser audit, and advanced metrics", async ({ page }, testInfo) => {
-  await page.goto("/");
+  await page.goto("/", { waitUntil: "domcontentloaded" });
   await page.locator('button[aria-label="设置"]:visible').click();
   await page.getByRole("button", { name: /^记忆/ }).click();
   await expect(page.getByRole("heading", { name: "记忆" })).toBeVisible();
@@ -7124,7 +7125,7 @@ test("exposes opt-in memory, browser audit, and advanced metrics", async ({ page
 });
 
 test("shows detailed usage tracking by token, day, and model", async ({ page }, testInfo) => {
-  await page.goto("/");
+  await page.goto("/", { waitUntil: "domcontentloaded" });
   await page.locator('button[aria-label="设置"]:visible').click();
   await page.getByRole("button", { name: /用量追踪/ }).click();
 
@@ -7151,7 +7152,7 @@ test("shows detailed usage tracking by token, day, and model", async ({ page }, 
 });
 
 test("explains why the commit button is disabled while nothing is staged", async ({ page }, testInfo) => {
-  await page.goto("/");
+  await page.goto("/", { waitUntil: "domcontentloaded" });
   await page.evaluate(() => {
     const host = window as unknown as {
       __TAURI_INTERNALS__: { invoke: (command: string, args?: Record<string, unknown>) => Promise<unknown> };
@@ -7197,7 +7198,7 @@ test("explains why the commit button is disabled while nothing is staged", async
 });
 
 test("colors file formats and wires complete Git actions", async ({ page }, testInfo) => {
-  await page.goto("/");
+  await page.goto("/", { waitUntil: "domcontentloaded" });
   await page.evaluate(() => {
     const host = window as unknown as {
       __TAURI_INTERNALS__: { invoke: (command: string, args?: Record<string, unknown>) => Promise<unknown> };
@@ -7265,7 +7266,7 @@ test("colors file formats and wires complete Git actions", async ({ page }, test
 });
 
 test("reports a successful commit instead of leaving the staged hint behind", async ({ page }, testInfo) => {
-  await page.goto("/");
+  await page.goto("/", { waitUntil: "domcontentloaded" });
   await page.evaluate(() => {
     const host = window as unknown as {
       __TAURI_INTERNALS__: { invoke: (command: string, args?: Record<string, unknown>) => Promise<unknown> };
@@ -7321,10 +7322,10 @@ test("reports a successful commit instead of leaving the staged hint behind", as
 test("hides project-bound sessions from the plain conversation list", async ({ page }, testInfo) => {
   test.skip(testInfo.project.name === "narrow", "窄屏隐藏侧边栏，项目会话分组只在桌面侧边栏展示");
   await page.addInitScript(() => {
-    localStorage.setItem("kcoder_thread_project_map", JSON.stringify({ "thread-1": "D:\\code\\KCode" }));
-    localStorage.setItem("kcoder_known_projects", JSON.stringify(["D:\\code\\KCode"]));
+    localStorage.setItem("kcode_thread_project_map", JSON.stringify({ "thread-1": "D:\\code\\KCode" }));
+    localStorage.setItem("kcode_known_projects", JSON.stringify(["D:\\code\\KCode"]));
   });
-  await page.goto("/");
+  await page.goto("/", { waitUntil: "domcontentloaded" });
 
   // 绑定到项目的会话不再出现在"会话"tab 的普通列表中
   const conversationList = page.getByRole("navigation", { name: "会话列表" });
@@ -7351,18 +7352,18 @@ test("hides project-bound sessions from the plain conversation list", async ({ p
 test("switches to the project workspace before creating a project session", async ({ page }, testInfo) => {
   test.skip(testInfo.project.name === "narrow", "窄屏隐藏项目侧边栏");
   await page.addInitScript(() => {
-    localStorage.setItem("kcoder_thread_project_map", JSON.stringify({ "thread-1": "D:\\code\\KCode" }));
-    localStorage.setItem("kcoder_known_projects", JSON.stringify(["D:\\code\\KCode"]));
-    localStorage.setItem("kcoder_e2e_workspace_path", "D:\\code\\codex");
+    localStorage.setItem("kcode_thread_project_map", JSON.stringify({ "thread-1": "D:\\code\\KCode" }));
+    localStorage.setItem("kcode_known_projects", JSON.stringify(["D:\\code\\KCode"]));
+    localStorage.setItem("kcode_e2e_workspace_path", "D:\\code\\codex");
   });
-  await page.goto("/");
+  await page.goto("/", { waitUntil: "domcontentloaded" });
 
   await expect.poll(() => page.evaluate(() =>
     (window as unknown as { __invocationArgs: Record<string, unknown> }).__invocationArgs.switch_workspace
   )).toEqual({ path: "D:\\code\\KCode", trusted: true });
 
   await page.evaluate(() => {
-    localStorage.setItem("kcoder_e2e_workspace_path", "D:\\code\\codex");
+    localStorage.setItem("kcode_e2e_workspace_path", "D:\\code\\codex");
     (window as unknown as { __invoked: string[] }).__invoked.length = 0;
   });
   await page.getByRole("tab", { name: "项目" }).click();
@@ -7432,7 +7433,7 @@ test("hydrates the unified thread item page and loads older turns", async ({ pag
       archived: false,
       workspacePath: "D:\\code\\KCode",
     };
-    localStorage.setItem("kcoder_e2e_thread_history", JSON.stringify({
+    localStorage.setItem("kcode_e2e_thread_history", JSON.stringify({
       schemaVersion: 1,
       summary,
       lastTurn: { turnId: "turn-new", state: "completed", error: null },
@@ -7445,13 +7446,13 @@ test("hydrates the unified thread item page and loads older turns", async ({ pag
       },
       unscopedItems: [],
     }));
-    localStorage.setItem("kcoder_e2e_thread_turns_page", JSON.stringify({
+    localStorage.setItem("kcode_e2e_thread_turns_page", JSON.stringify({
       data: [turn("turn-old", "older question", "older answer", 100)],
       nextCursor: null,
       backwardsCursor: "older-backwards-cursor",
     }));
   });
-  await page.goto("/");
+  await page.goto("/", { waitUntil: "domcontentloaded" });
 
   await expect(page.getByText("recent answer", { exact: true })).toBeVisible();
   await expect.poll(() => page.evaluate(() =>
@@ -7497,7 +7498,7 @@ test("keeps line breaks in a restored user message", async ({ page }, testInfo) 
       message: { schemaVersion: 1, id, role, content: [{ type: "text", text: content }], createdAtMs },
       ...(role === "assistant" ? { phase: "final_answer" } : {}),
     });
-    localStorage.setItem("kcoder_e2e_thread_history", JSON.stringify({
+    localStorage.setItem("kcode_e2e_thread_history", JSON.stringify({
       schemaVersion: 1,
       summary: {
         schemaVersion: 1,
@@ -7546,7 +7547,7 @@ test("renders a recovered assistant item only once when its turn comes from the 
     const turnId = "turn-recovered";
     const answerId = "answer-recovered";
     const answer = "代码已提交并推送成功。";
-    localStorage.setItem("kcoder_e2e_thread_history", JSON.stringify({
+    localStorage.setItem("kcode_e2e_thread_history", JSON.stringify({
       schemaVersion: 1,
       summary: {
         schemaVersion: 1,
@@ -7615,7 +7616,7 @@ test("renders a recovered assistant item only once when its turn comes from the 
       }],
     }));
   });
-  await page.goto("/");
+  await page.goto("/", { waitUntil: "domcontentloaded" });
 
   await expect(page.getByText("代码已提交并推送成功。", { exact: true })).toHaveCount(1);
   await expect(page.locator(".message--assistant")).toHaveCount(1);
@@ -7652,7 +7653,7 @@ test("restores a steered turn around the user guidance boundary", async ({ page 
       },
       ...(role === "assistant" ? { phase: "final_answer" } : {}),
     });
-    localStorage.setItem("kcoder_e2e_thread_history", JSON.stringify({
+    localStorage.setItem("kcode_e2e_thread_history", JSON.stringify({
       schemaVersion: 1,
       summary: {
         schemaVersion: 1,
@@ -7726,7 +7727,7 @@ test("restores a steered turn around the user guidance boundary", async ({ page 
       unscopedItems: [],
     }));
   });
-  await page.goto("/");
+  await page.goto("/", { waitUntil: "domcontentloaded" });
 
   await expect(page.getByText("这是刷新前的阶段回复。", { exact: true })).toHaveCount(1);
   await expect(page.locator(".message--user").getByText("改为先检查子智能体实现。", { exact: true })).toHaveCount(1);
@@ -7783,7 +7784,7 @@ test("does not repeat a pre-steer answer when the steered tail has no text", asy
       },
       ...(role === "assistant" ? { phase: "final_answer" } : {}),
     });
-    localStorage.setItem("kcoder_e2e_thread_history", JSON.stringify({
+    localStorage.setItem("kcode_e2e_thread_history", JSON.stringify({
       schemaVersion: 1,
       summary: {
         schemaVersion: 1,
@@ -7837,7 +7838,7 @@ test("does not repeat a pre-steer answer when the steered tail has no text", asy
       unscopedItems: [],
     }));
   });
-  await page.goto("/");
+  await page.goto("/", { waitUntil: "domcontentloaded" });
 
   await expect(page.getByText("这是引导前唯一的回复。", { exact: true })).toHaveCount(1);
   const listText = await page.locator(".message-list").textContent() ?? "";
@@ -7888,7 +7889,7 @@ test("does not duplicate tool-only steered turns as orphan activity", async ({ p
         activity,
       };
     };
-    localStorage.setItem("kcoder_e2e_thread_history", JSON.stringify({
+    localStorage.setItem("kcode_e2e_thread_history", JSON.stringify({
       schemaVersion: 1,
       summary: {
         schemaVersion: 1,
@@ -7925,7 +7926,7 @@ test("does not duplicate tool-only steered turns as orphan activity", async ({ p
       unscopedItems: [],
     }));
   });
-  await page.goto("/");
+  await page.goto("/", { waitUntil: "domcontentloaded" });
 
   await expect(page.locator('article.message--assistant[data-turn-id="turn-steer-tools-only"]')).toHaveCount(2);
   await expect(page.locator(".turn-timeline-tool")).toHaveCount(2);
@@ -7960,7 +7961,7 @@ test("keeps the pre-steer segment when the original retry owner is on an older p
       },
       ...(role === "assistant" ? { phase: "final_answer" } : {}),
     });
-    localStorage.setItem("kcoder_e2e_thread_history", JSON.stringify({
+    localStorage.setItem("kcode_e2e_thread_history", JSON.stringify({
       schemaVersion: 1,
       summary: {
         schemaVersion: 1,
@@ -7996,7 +7997,7 @@ test("keeps the pre-steer segment when the original retry owner is on an older p
       unscopedItems: [],
     }));
   });
-  await page.goto("/");
+  await page.goto("/", { waitUntil: "domcontentloaded" });
 
   await expect(page.getByText("分页中引导前的回复。", { exact: true })).toHaveCount(1);
   await expect(page.getByText("分页中引导后的回复。", { exact: true })).toHaveCount(1);
@@ -8053,7 +8054,7 @@ test("keeps retry attempts on the correct side of steer boundaries", async ({ pa
     const firstTurnId = "turn-steered-retry-first";
     const secondTurnId = "turn-steered-retry-second";
     const thirdTurnId = "turn-steered-retry-third";
-    localStorage.setItem("kcoder_e2e_thread_history", JSON.stringify({
+    localStorage.setItem("kcode_e2e_thread_history", JSON.stringify({
       schemaVersion: 1,
       summary: {
         schemaVersion: 1,
@@ -8123,7 +8124,7 @@ test("keeps retry attempts on the correct side of steer boundaries", async ({ pa
       unscopedItems: [],
     }));
   });
-  await page.goto("/");
+  await page.goto("/", { waitUntil: "domcontentloaded" });
 
   const retryGroups = page.locator(".message--retry-group");
   await expect(retryGroups).toHaveCount(2);
@@ -8162,7 +8163,7 @@ test("coalesces multiple assistant projections for the same turn", async ({ page
         createdAtMs,
       },
     });
-    localStorage.setItem("kcoder_e2e_thread_history", JSON.stringify({
+    localStorage.setItem("kcode_e2e_thread_history", JSON.stringify({
       schemaVersion: 1,
       summary: { schemaVersion: 1, id: "thread-1", title: "Phase 6 workbench", createdAtMs: 1, updatedAtMs: 5, archived: false },
       lastTurn: { turnId, state: "completed", error: null },
@@ -8187,7 +8188,7 @@ test("coalesces multiple assistant projections for the same turn", async ({ page
       unscopedItems: [],
     }));
   });
-  await page.goto("/");
+  await page.goto("/", { waitUntil: "domcontentloaded" });
 
   await expect(page.locator(".message--assistant")).toHaveCount(1);
   await expect(page.getByText("最终答复", { exact: true })).toHaveCount(1);
@@ -8204,12 +8205,12 @@ test("clears the previous thread view while the selected thread is loading", asy
       updatedAtMs: 3,
       archived: false,
     };
-    localStorage.setItem("kcoder_e2e_threads", JSON.stringify([
+    localStorage.setItem("kcode_e2e_threads", JSON.stringify([
       { schemaVersion: 1, id: "thread-1", title: "Phase 6 workbench", createdAtMs: 1, updatedAtMs: 2, archived: false },
       secondThread,
     ]));
-    localStorage.setItem("kcoder_e2e_empty_thread_id", secondThread.id);
-    localStorage.setItem("kcoder_e2e_thread_detail_by_id", JSON.stringify({
+    localStorage.setItem("kcode_e2e_empty_thread_id", secondThread.id);
+    localStorage.setItem("kcode_e2e_thread_detail_by_id", JSON.stringify({
       [secondThread.id]: {
         schemaVersion: 1,
         summary: secondThread,
@@ -8223,10 +8224,10 @@ test("clears the previous thread view while the selected thread is loading", asy
       },
     }));
   });
-  await page.goto("/");
+  await page.goto("/", { waitUntil: "domcontentloaded" });
 
   await expect(page.getByText("检查完成。", { exact: true })).toBeVisible();
-  await page.evaluate(() => localStorage.setItem("kcoder_e2e_read_delay_ms", "2000"));
+  await page.evaluate(() => localStorage.setItem("kcode_e2e_read_delay_ms", "2000"));
   await page.getByRole("button", { name: "Parallel conversation", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Parallel conversation", exact: true })).toBeVisible();
 
@@ -8241,14 +8242,14 @@ test("keeps workspace terminal input ordered and preserves the session across ta
     await page.setViewportSize({ width: 381, height: 420 });
   }
   await page.addInitScript(() => {
-    localStorage.setItem("kcoder_theme", "dark");
-    localStorage.setItem("kcoder_e2e_pty_write_delay_ms", "25");
+    localStorage.setItem("kcode_theme", "dark");
+    localStorage.setItem("kcode_e2e_pty_write_delay_ms", "25");
     localStorage.setItem(
-      "kcoder_e2e_pty_output",
+      "kcode_e2e_pty_output",
       "\u001b[34mPS D:\\code\\Nick\\KCode>\u001b[0m pnpm tauri dev\r\nReady\r\nPS D:\\code\\Nick\\KCode> ",
     );
   });
-  await page.goto("/");
+  await page.goto("/", { waitUntil: "domcontentloaded" });
   await page.getByRole("button", { name: "工作台", exact: true }).click();
   await page.getByRole("tab", { name: "终端" }).click();
 
@@ -8286,9 +8287,9 @@ test("keeps workspace terminal input ordered and preserves the session across ta
 
 test("shows the terminal exit state and restarts the session", async ({ page }) => {
   await page.addInitScript(() => {
-    localStorage.setItem("kcoder_e2e_pty_state", "exited");
+    localStorage.setItem("kcode_e2e_pty_state", "exited");
   });
-  await page.goto("/");
+  await page.goto("/", { waitUntil: "domcontentloaded" });
   await page.getByRole("button", { name: "工作台", exact: true }).click();
   await page.getByRole("tab", { name: "终端" }).click();
 
@@ -8299,7 +8300,7 @@ test("shows the terminal exit state and restarts the session", async ({ page }) 
 });
 
 test("opens the embedded browser panel and keeps the page across tab switches", async ({ page }) => {
-  await page.goto("/");
+  await page.goto("/", { waitUntil: "domcontentloaded" });
   await page.getByRole("button", { name: "工作台", exact: true }).click();
   await page.getByRole("tab", { name: "浏览器" }).click();
 
@@ -8331,8 +8332,8 @@ test("opens the embedded browser panel and keeps the page across tab switches", 
 
 
 test("shows a calm waiting pill before the assistant returns its first update", async ({ page }, testInfo) => {
-  await page.addInitScript(() => localStorage.setItem("kcoder_e2e_plan", "null"));
-  await page.goto("/");
+  await page.addInitScript(() => localStorage.setItem("kcode_e2e_plan", "null"));
+  await page.goto("/", { waitUntil: "domcontentloaded" });
   await expect(page.getByRole("heading", { name: "Phase 6 workbench", exact: true })).toBeVisible();
   await page.evaluate(() => {
     (window as unknown as { __emitAgentEvent: (event: unknown) => void }).__emitAgentEvent({
@@ -8391,8 +8392,8 @@ test("shows a calm waiting pill before the assistant returns its first update", 
 });
 
 test("replaces the waiting state with the first streamed assistant content", async ({ page }) => {
-  await page.addInitScript(() => localStorage.setItem("kcoder_e2e_plan", "null"));
-  await page.goto("/");
+  await page.addInitScript(() => localStorage.setItem("kcode_e2e_plan", "null"));
+  await page.goto("/", { waitUntil: "domcontentloaded" });
   await expect(page.getByRole("heading", { name: "Phase 6 workbench", exact: true })).toBeVisible();
   await page.evaluate(() => {
     const emit = (window as unknown as { __emitAgentEvent: (event: unknown) => void }).__emitAgentEvent;
@@ -8429,7 +8430,7 @@ test("replaces the waiting state with the first streamed assistant content", asy
 });
 
 test("rate limit waiting and all child states are visible with only one wait call", async ({ page }, testInfo) => {
-  await page.goto("/");
+  await page.goto("/", { waitUntil: "domcontentloaded" });
   await expect(page.getByRole("heading", { name: "Phase 6 workbench", exact: true })).toBeVisible();
   await page.evaluate(() => {
     const bridge = window as unknown as { __emitAgentEvent: (event: unknown) => void; __emitTauriEvent: (name: string, event: unknown) => void };
@@ -8484,13 +8485,13 @@ test("rate limit waiting and all child states are visible with only one wait cal
 
 test("keeps subagent status inside the round that delegated it", async ({ page }) => {
   await page.addInitScript(() => {
-    localStorage.setItem("kcoder_e2e_subagents", JSON.stringify([{
+    localStorage.setItem("kcode_e2e_subagents", JSON.stringify([{
       schemaVersion: 1, id: "agent-round-one", parentAgentId: null, parentThreadId: "thread-1", threadId: "child-round-one",
       label: "变更审查", task: "检查文档", state: "failed", depth: 1, workspaceRoot: "D:\\code\\KCode",
       capabilities: ["read_file"], tokenBudget: null, tokensUsed: 0, timeoutMs: 600000,
       createdAtMs: 3, updatedAtMs: 9, summary: null, error: "provider unavailable", turnCount: 1,
     }]));
-    localStorage.setItem("kcoder_e2e_thread_detail", JSON.stringify({
+    localStorage.setItem("kcode_e2e_thread_detail", JSON.stringify({
       schemaVersion: 1,
       summary: { schemaVersion: 1, id: "thread-1", title: "Phase 6 workbench", createdAtMs: 1, updatedAtMs: 5, archived: false, inProject: true, workspacePath: "D:\\code\\KCode" },
       messages: [
@@ -8511,7 +8512,7 @@ test("keeps subagent status inside the round that delegated it", async ({ page }
       approvals: [], userInputs: [], changes: [], todos: [], lastUsage: null,
     }));
   });
-  await page.goto("/");
+  await page.goto("/", { waitUntil: "domcontentloaded" });
   await expect(page.getByRole("heading", { name: "Phase 6 workbench", exact: true })).toBeVisible();
   const roundStatus = page.getByRole("region", { name: "本轮子智能体状态" });
   await expect(roundStatus).toHaveCount(1);
@@ -8530,7 +8531,7 @@ test("keeps subagent status inside the round that delegated it", async ({ page }
 
 test("exhausted subagent budget disables resume in detail and list while ordinary failures remain resumable", async ({ page }) => {
   await page.addInitScript(() => {
-    localStorage.setItem("kcoder_e2e_subagents", JSON.stringify([
+    localStorage.setItem("kcode_e2e_subagents", JSON.stringify([
       { id: "budget-child", label: "测试范围分析", tokenBudget: 8000, tokensUsed: 64398,
         error: "token_budget_exceeded: used 64398 of 8000 tokens" },
       { id: "network-child", label: "网络失败", tokenBudget: null, tokensUsed: 64398,
@@ -8546,7 +8547,7 @@ test("exhausted subagent budget disables resume in detail and list while ordinar
       ...child,
     }))));
   });
-  await page.goto("/");
+  await page.goto("/", { waitUntil: "domcontentloaded" });
   // 这些子任务由夹具直接创建、没有委派轮次，因此落在对话底部的兜底块里。
   const summary = page.getByRole("region", { name: "本会话子智能体状态" });
   await summary.getByRole("button").filter({ hasText: "测试范围分析" }).click();
@@ -8571,15 +8572,15 @@ test("exhausted subagent budget disables resume in detail and list while ordinar
 
 test("shows direct subagent creation in a conversation without messages", async ({ page }) => {
   await page.addInitScript(() => {
-    localStorage.setItem("kcoder_e2e_subagents", "[]");
-    localStorage.setItem("kcoder_e2e_thread_detail_by_id", JSON.stringify({ "thread-1": {
+    localStorage.setItem("kcode_e2e_subagents", "[]");
+    localStorage.setItem("kcode_e2e_thread_detail_by_id", JSON.stringify({ "thread-1": {
       schemaVersion: 1,
       summary: { schemaVersion: 1, id: "thread-1", title: "Phase 6 workbench", createdAtMs: 1, updatedAtMs: 1, archived: false, inProject: true, workspacePath: "D:\\code\\KCode" },
       messages: [], messageTurnIds: {}, turnUserMessageIds: {}, lastTurn: null,
       toolActivities: [], turnTimeline: [], lastUsage: null, contextUsage: null, approvals: [], userInputs: [], changes: [], todos: [],
     } }));
   });
-  await page.goto("/");
+  await page.goto("/", { waitUntil: "domcontentloaded" });
   await expect(page.getByRole("heading", { name: "Phase 6 workbench", exact: true })).toBeVisible();
   await page.evaluate(() => {
     (window as unknown as { __emitTauriEvent: (name: string, payload: unknown) => void }).__emitTauriEvent("subagent-event", {
@@ -8595,12 +8596,12 @@ test("shows direct subagent creation in a conversation without messages", async 
 
 test("robot progress follows authoritative nodes across failure retry and reload", async ({ page }) => {
   await page.addInitScript(() => {
-    if (localStorage.getItem("kcoder_e2e_workflow_run")) return;
+    if (localStorage.getItem("kcode_e2e_workflow_run")) return;
     const nodes = ["requirements-analysis", "interface-architecture-design", "html-prototype", "backend-development", "frontend-development", "comprehensive-testing", "build-release", "code-review-delivery"];
-    localStorage.setItem("kcoder_e2e_plan", JSON.stringify({ schemaVersion: 1, threadId: "thread-1", revision: 1, updatedAtMs: 1, steps: nodes.map((id, index) => ({ id, step: `旧计划 ${index + 1}`, status: index === 0 ? "in_progress" : "pending" })) }));
-    localStorage.setItem("kcoder_e2e_workflow_run", JSON.stringify({ schemaVersion: 1, definitionVersion: 2, id: "progress-run", threadId: "thread-1", workflowId: "fullstack-delivery", objective: "进度回归", state: "active", currentNodeId: nodes[1], currentNodeIndex: 1, nodeCount: 8, completedNodes: [{ nodeId: nodes[0], summary: "需求已确认", evidence: ["docs"], completedAtMs: 2 }], createdAtMs: 1, updatedAtMs: 2, revision: 2 }));
+    localStorage.setItem("kcode_e2e_plan", JSON.stringify({ schemaVersion: 1, threadId: "thread-1", revision: 1, updatedAtMs: 1, steps: nodes.map((id, index) => ({ id, step: `旧计划 ${index + 1}`, status: index === 0 ? "in_progress" : "pending" })) }));
+    localStorage.setItem("kcode_e2e_workflow_run", JSON.stringify({ schemaVersion: 1, definitionVersion: 2, id: "progress-run", threadId: "thread-1", workflowId: "fullstack-delivery", objective: "进度回归", state: "active", currentNodeId: nodes[1], currentNodeIndex: 1, nodeCount: 8, completedNodes: [{ nodeId: nodes[0], summary: "需求已确认", evidence: ["docs"], completedAtMs: 2 }], createdAtMs: 1, updatedAtMs: 2, revision: 2 }));
   });
-  await page.goto("/");
+  await page.goto("/", { waitUntil: "domcontentloaded" });
   const progress = page.locator(".plan-progress-trigger");
   const control = page.getByLabel("机器人工作流 全栈开发机器人");
   await expect(progress).toHaveCount(1);
@@ -8611,10 +8612,10 @@ test("robot progress follows authoritative nodes across failure retry and reload
     const base = { schemaVersion: 1, threadId: "thread-1", turnId: "retry-progress", phase: "executing" };
     emit({ ...base, type: "turn_started" });
     emit({ ...base, type: "tool_started", call: { id: "advance", name: "complete_workflow_node", arguments: {}, metadata: {} } });
-    const run = JSON.parse(localStorage.getItem("kcoder_e2e_workflow_run")!);
+    const run = JSON.parse(localStorage.getItem("kcode_e2e_workflow_run")!);
     run.completedNodes.push({ nodeId: run.currentNodeId, summary: "设计已完成", evidence: ["docs/design"], completedAtMs: 3 });
     Object.assign(run, { currentNodeId: "html-prototype", currentNodeIndex: 2, revision: 3, updatedAtMs: 3 });
-    localStorage.setItem("kcoder_e2e_workflow_run", JSON.stringify(run));
+    localStorage.setItem("kcode_e2e_workflow_run", JSON.stringify(run));
     emit({ ...base, type: "tool_completed", callId: "advance", name: "complete_workflow_node", result: { success: true, output: "done", metadata: {} } });
   });
   await expect(progress).toHaveCount(1);
@@ -8629,19 +8630,19 @@ test("robot progress follows authoritative nodes across failure retry and reload
   await page.evaluate(() => (window as unknown as { __emitAgentEvent: (event: unknown) => void }).__emitAgentEvent({ schemaVersion: 1, threadId: "thread-1", turnId: "retry-progress", phase: "responding", type: "turn_failed", message: "provider request failed" }));
   await expect(progress).toContainText("第 3/8 步");
   await expect(page.locator(".turn-execution--failed").last().getByRole("button", { name: "继续当前步骤", exact: true })).toBeVisible();
-  await page.reload();
+  await page.reload({ waitUntil: "domcontentloaded" });
   await expect(progress).toContainText("第 3/8 步");
   await expect(control).toContainText("3 / 8");
 });
 
 test("robot node progress stays authoritative after a turn completes", async ({ page }) => {
   await page.addInitScript(() => {
-    if (localStorage.getItem("kcoder_e2e_workflow_run")) return;
+    if (localStorage.getItem("kcode_e2e_workflow_run")) return;
     const nodes = ["requirements-analysis", "interface-architecture-design", "html-prototype", "backend-development", "frontend-development", "comprehensive-testing", "build-release", "code-review-delivery"];
-    localStorage.setItem("kcoder_e2e_plan", JSON.stringify({ schemaVersion: 1, threadId: "thread-1", revision: 1, updatedAtMs: 1, steps: nodes.map((id, index) => ({ id, step: `旧计划 ${index + 1}`, status: index === 0 ? "in_progress" : "pending" })) }));
-    localStorage.setItem("kcoder_e2e_workflow_run", JSON.stringify({ schemaVersion: 1, definitionVersion: 2, id: "reconcile-run", threadId: "thread-1", workflowId: "fullstack-delivery", objective: "收尾核对边界", state: "active", currentNodeId: nodes[1], currentNodeIndex: 1, nodeCount: 8, completedNodes: [{ nodeId: nodes[0], summary: "需求已确认", evidence: ["docs"], completedAtMs: 2 }], createdAtMs: 1, updatedAtMs: 2, revision: 2 }));
+    localStorage.setItem("kcode_e2e_plan", JSON.stringify({ schemaVersion: 1, threadId: "thread-1", revision: 1, updatedAtMs: 1, steps: nodes.map((id, index) => ({ id, step: `旧计划 ${index + 1}`, status: index === 0 ? "in_progress" : "pending" })) }));
+    localStorage.setItem("kcode_e2e_workflow_run", JSON.stringify({ schemaVersion: 1, definitionVersion: 2, id: "reconcile-run", threadId: "thread-1", workflowId: "fullstack-delivery", objective: "收尾核对边界", state: "active", currentNodeId: nodes[1], currentNodeIndex: 1, nodeCount: 8, completedNodes: [{ nodeId: nodes[0], summary: "需求已确认", evidence: ["docs"], completedAtMs: 2 }], createdAtMs: 1, updatedAtMs: 2, revision: 2 }));
   });
-  await page.goto("/");
+  await page.goto("/", { waitUntil: "domcontentloaded" });
   const progress = page.locator(".plan-progress-trigger");
   await expect(progress).toContainText("第 2/8 步");
   await page.evaluate(() => {
@@ -8662,7 +8663,7 @@ test("robot node progress stays authoritative after a turn completes", async ({ 
 });
 
 test("plan progress and change list deduplicate repeated file changes by path", async ({ page }) => {
-  await page.goto("/");
+  await page.goto("/", { waitUntil: "domcontentloaded" });
   const progress = page.locator(".plan-progress-trigger");
   await expect(progress).toHaveCount(1);
   // Turn 已经正常结束，计划却仍停在「进行中」：如实暴露未收尾，而不是继续显示误导性的进行中步数。
@@ -8721,7 +8722,7 @@ test("plan progress and change list deduplicate repeated file changes by path", 
   await expect(details).toContainText("模型未在收尾前同步步骤状态");
   await expect(details.locator(".plan-progress-step--completed")).toContainText("检查工作区");
   await expect(details.locator(".plan-progress-step--in_progress")).toContainText("验证实现");
-  await page.reload();
+  await page.reload({ waitUntil: "domcontentloaded" });
   await expect(progress).toContainText("计划未收尾 · 1/2 已完成");
 });
 
@@ -8839,7 +8840,7 @@ async function installRuntimeLogFixture(page: import('@playwright/test').Page) {
 }
 
 test('runtime logs show two levels, original conversation sources and confirmed cleanup', async ({ page }) => {
-  await page.goto('/');
+  await page.goto('/', { waitUntil: "domcontentloaded" });
   await installRuntimeLogFixture(page);
   const viewport = page.viewportSize();
   // The existing sidebar is hidden at narrow widths; open then test the dialog at the target width.
@@ -8878,7 +8879,7 @@ test('runtime logs show two levels, original conversation sources and confirmed 
 });
 
 test('runtime log directory can change, cancel, fail and reset without moving history', async ({ page }) => {
-  await page.goto('/');
+  await page.goto('/', { waitUntil: "domcontentloaded" });
   await installRuntimeLogFixture(page);
   const viewport = page.viewportSize();
   await page.setViewportSize({ width: 1280, height: 820 });
@@ -8913,7 +8914,7 @@ test('runtime log directory can change, cancel, fail and reset without moving hi
 });
 
 test('runtime logs search error text as well as event names', async ({ page }) => {
-  await page.goto('/');
+  await page.goto('/', { waitUntil: "domcontentloaded" });
   await installRuntimeLogFixture(page);
   const viewport = page.viewportSize();
   await page.setViewportSize({ width: 1280, height: 820 });
@@ -8932,7 +8933,7 @@ test('runtime logs search error text as well as event names', async ({ page }) =
 });
 
 test('runtime log cleanup failure preserves records and permits retry', async ({ page }) => {
-  await page.goto('/');
+  await page.goto('/', { waitUntil: "domcontentloaded" });
   await installRuntimeLogFixture(page);
   const viewport = page.viewportSize();
   // The existing sidebar is hidden at narrow widths; open then test the dialog at the target width.
