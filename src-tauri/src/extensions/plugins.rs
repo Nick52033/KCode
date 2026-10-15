@@ -1721,6 +1721,7 @@ impl ToolHandler for PluginSkillReadTool {
             .read_skill(&arguments.plugin_id, &arguments.skill_name)?;
         Ok(ToolResult {
             success: true,
+            images: Vec::new(),
             output,
             metadata: json!({
                 "pluginId": arguments.plugin_id,
@@ -1771,6 +1772,7 @@ impl ToolHandler for PluginResourceReadTool {
             .read_resource(&arguments.plugin_id, &arguments.path)?;
         Ok(ToolResult {
             success: true,
+            images: Vec::new(),
             output,
             metadata: json!({
                 "pluginId": arguments.plugin_id,

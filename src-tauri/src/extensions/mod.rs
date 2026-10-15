@@ -1605,6 +1605,7 @@ impl ExtensionService {
         }
         Ok(ToolResult {
             success: true,
+            images: Vec::new(),
             output: text[offset..end].to_string(),
             metadata: json!({
                 "skillId": skill_id,

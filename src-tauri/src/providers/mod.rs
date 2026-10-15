@@ -93,6 +93,8 @@ pub enum ProviderMessage {
         name: String,
         success: bool,
         output: String,
+        #[serde(default)]
+        images: Vec<ProviderImage>,
     },
     ProviderContext {
         provider: String,

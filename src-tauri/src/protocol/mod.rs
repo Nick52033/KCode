@@ -577,6 +577,8 @@ pub struct ToolResult {
     pub success: bool,
     pub output: String,
     pub metadata: serde_json::Value,
+    #[serde(default)]
+    pub images: Vec<ImageAttachment>,
 }
 
 #[derive(Debug, Clone, Serialize)]

@@ -319,6 +319,7 @@ pub fn run() {
             commands::extract_local_document,
             commands::open_workspace_file,
             commands::reveal_workspace_file,
+            commands::open_project_directory,
             commands::git_status,
             commands::git_diff,
             commands::git_branches,

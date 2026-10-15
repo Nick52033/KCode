@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use base64::Engine as _;
 use chromiumoxide::browser::{Browser, BrowserConfig};
 use chromiumoxide::cdp::browser_protocol::page::CaptureScreenshotFormat;
 use chromiumoxide::page::{Page, ScreenshotParams};
@@ -16,13 +17,14 @@ use tokio_util::sync::CancellationToken;
 use url::{Host, Url};
 use uuid::Uuid;
 
-use crate::protocol::{ToolDefinition, ToolResult};
+use crate::protocol::{ImageAttachment, ToolDefinition, ToolResult};
 use crate::storage::now_ms;
 use crate::tools::{ToolContext, ToolError, ToolHandler};
 
 use super::store::{append_json_line, read_json_lines};
 
 const MAX_ARTIFACT_BYTES: usize = 8 * 1024 * 1024;
+const MAX_MODEL_IMAGE_BYTES: usize = 4 * 1024 * 1024;
 const MAX_SNAPSHOT_CHARS: usize = 120_000;
 const MAX_AUDIT_EVENTS: usize = 500;
 
@@ -599,7 +601,7 @@ impl ToolHandler for BrowserTool {
         arguments: Value,
         cancellation: CancellationToken,
     ) -> Result<ToolResult, ToolError> {
-        let output = match self.action {
+        let (output, images) = match self.action {
             BrowserAction::Navigate => {
                 #[derive(Deserialize)]
                 struct Args {
@@ -607,7 +609,10 @@ impl ToolHandler for BrowserTool {
                 }
                 let args: Args = serde_json::from_value(arguments)
                     .map_err(|error| ToolError::InvalidArguments(error.to_string()))?;
-                json!({"url": self.service.navigate(&args.url, cancellation).await.map_err(map_browser_error)?})
+                (
+                    json!({"url": self.service.navigate(&args.url, cancellation).await.map_err(map_browser_error)?}),
+                    Vec::new(),
+                )
             }
             BrowserAction::Click => {
                 #[derive(Deserialize)]
@@ -616,7 +621,10 @@ impl ToolHandler for BrowserTool {
                 }
                 let args: Args = serde_json::from_value(arguments)
                     .map_err(|error| ToolError::InvalidArguments(error.to_string()))?;
-                json!({"result": self.service.click(&args.selector, cancellation).await.map_err(map_browser_error)?})
+                (
+                    json!({"result": self.service.click(&args.selector, cancellation).await.map_err(map_browser_error)?}),
+                    Vec::new(),
+                )
             }
             BrowserAction::Type => {
                 #[derive(Deserialize)]
@@ -626,11 +634,15 @@ impl ToolHandler for BrowserTool {
                 }
                 let args: Args = serde_json::from_value(arguments)
                     .map_err(|error| ToolError::InvalidArguments(error.to_string()))?;
-                json!({"result": self.service.type_text(&args.selector, &args.text, cancellation).await.map_err(map_browser_error)?})
+                (
+                    json!({"result": self.service.type_text(&args.selector, &args.text, cancellation).await.map_err(map_browser_error)?}),
+                    Vec::new(),
+                )
             }
-            BrowserAction::Snapshot => {
-                json!({"text": self.service.snapshot(cancellation).await.map_err(map_browser_error)?})
-            }
+            BrowserAction::Snapshot => (
+                json!({"text": self.service.snapshot(cancellation).await.map_err(map_browser_error)?}),
+                Vec::new(),
+            ),
             BrowserAction::Screenshot => {
                 #[derive(Deserialize)]
                 #[serde(rename_all = "camelCase")]
@@ -640,23 +652,41 @@ impl ToolHandler for BrowserTool {
                 }
                 let args: Args = serde_json::from_value(arguments)
                     .map_err(|error| ToolError::InvalidArguments(error.to_string()))?;
-                serde_json::to_value(
-                    self.service
-                        .screenshot(args.full_page, cancellation)
-                        .await
-                        .map_err(map_browser_error)?,
-                )
-                .map_err(|error| ToolError::Execution(error.to_string()))?
+                let artifact = self
+                    .service
+                    .screenshot(args.full_page, cancellation)
+                    .await
+                    .map_err(map_browser_error)?;
+                let bytes = self
+                    .service
+                    .read_artifact(&artifact.name)
+                    .map_err(ToolError::Execution)?;
+                let output = serde_json::to_value(&artifact)
+                    .map_err(|error| ToolError::Execution(error.to_string()))?;
+                let images = if bytes.len() <= MAX_MODEL_IMAGE_BYTES {
+                    vec![ImageAttachment {
+                        name: artifact.name.clone(),
+                        data_url: format!(
+                            "data:{};base64,{}",
+                            artifact.media_type,
+                            base64::engine::general_purpose::STANDARD.encode(bytes)
+                        ),
+                    }]
+                } else {
+                    Vec::new()
+                };
+                (output, images)
             }
             BrowserAction::Close => {
                 self.service.close().await.map_err(ToolError::Execution)?;
-                json!({"closed": true})
+                (json!({"closed": true}), Vec::new())
             }
         };
         Ok(ToolResult {
             success: true,
             output: output.to_string(),
             metadata: json!({"browser": true}),
+            images,
         })
     }
 }

@@ -351,6 +351,7 @@ fn productive_progress_counts_changes_plan_completion_and_new_verification_resul
     let search_result = ToolResult {
         success: true,
         output: "src/lib.rs: TODO".into(),
+        images: Vec::new(),
         metadata: json!({"exitCode": 0}),
     };
     assert!(!tracker.observe_tool_result(2, 2, &search, &search_result, false));
@@ -365,6 +366,7 @@ fn productive_progress_counts_changes_plan_completion_and_new_verification_resul
         success: true,
         output: "test result: ok".into(),
         metadata: json!({"exitCode": 0}),
+    images: Vec::new(),
     };
     assert!(tracker.observe_tool_result(3, 3, &verification, &verification_result, false));
     assert!(!tracker.observe_tool_result(20, 20, &verification, &verification_result, false));
@@ -401,6 +403,7 @@ fn productive_progress_counts_changes_plan_completion_and_new_verification_resul
         success: true,
         output: "updated".into(),
         metadata: json!({"changeSet": {"files": [{"path": "source.txt"}]}}),
+    images: Vec::new(),
     };
     assert!(tracker.observe_tool_result(41, 41, &write, &write_result, false));
     assert!(tracker.failure_reason(42, 42).is_none());
@@ -420,6 +423,7 @@ fn productive_progress_counts_changes_plan_completion_and_new_verification_resul
         success: true,
         output: "plan saved".into(),
         metadata: json!({"revision": 2}),
+    images: Vec::new(),
     };
     assert!(tracker.observe_tool_result(43, 43, &plan, &plan_result, false));
     assert!(!tracker.observe_tool_result(44, 44, &plan, &plan_result, false));
@@ -438,6 +442,7 @@ fn temporary_probe_file_changes_do_not_count_as_productive_progress() {
         let result = ToolResult {
             success: true,
             output: "written".into(),
+            images: Vec::new(),
             metadata: json!({
                 "changeSet": {"files": [{"path": path}]}
             }),
@@ -451,6 +456,7 @@ fn temporary_probe_file_changes_do_not_count_as_productive_progress() {
     let real_file = ToolResult {
         success: true,
         output: "written".into(),
+        images: Vec::new(),
         metadata: json!({
             "changeSet": {"files": [{"path": "src/weixin.rs"}]}
         }),
@@ -468,6 +474,7 @@ fn temporary_probe_file_changes_do_not_count_as_productive_progress() {
                 }]
             }
         }),
+    images: Vec::new(),
     };
     assert!(change_set_has_productive_file_changes(&move_from_probe_to_source));
 }
@@ -486,6 +493,7 @@ fn repeated_temporary_probe_writes_reach_the_productive_progress_guard() {
         let result = ToolResult {
             success: true,
             output: "written".into(),
+            images: Vec::new(),
             metadata: json!({
                 "changeSet": {
                     "files": [{"path": format!(".tmp-probe/probe-{count}.py")}]

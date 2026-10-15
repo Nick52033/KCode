@@ -522,6 +522,7 @@ fn proposal_result(
 fn result(output: Value, metadata: Value) -> Result<ToolResult, ToolError> {
     Ok(ToolResult {
         success: true,
+        images: Vec::new(),
         output: serde_json::to_string(&output)
             .map_err(|_| ToolError::Execution("memory output serialization failed".into()))?,
         metadata,

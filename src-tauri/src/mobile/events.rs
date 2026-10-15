@@ -690,6 +690,7 @@ mod tests {
             name: "read_file".to_string(),
             result: ToolResult {
                 success: true,
+                images: Vec::new(),
                 output: "x".repeat(MAX_TOOL_RESULT_CHARS * 3),
                 metadata: json!({ "path": "D:\\secret" }),
             },

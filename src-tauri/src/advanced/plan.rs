@@ -338,6 +338,7 @@ impl ToolHandler for PlanTool {
         .map_err(ToolError::Execution)?;
         Ok(ToolResult {
             success: true,
+            images: Vec::new(),
             output: serde_json::to_string(&view)
                 .map_err(|error| ToolError::Execution(error.to_string()))?,
             metadata: json!({"revision": view.revision}),

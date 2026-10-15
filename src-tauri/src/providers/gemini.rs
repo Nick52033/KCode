@@ -328,15 +328,15 @@ fn gemini_contents(messages: &[ProviderMessage]) -> Vec<Value> {
                 })).collect::<Vec<_>>();
                 Some(json!({ "role": "model", "parts": parts }))
             },
-            ProviderMessage::ToolResult { call_id, name, success, output } => Some(json!({
+            ProviderMessage::ToolResult { call_id, name, success, output, images } => Some(json!({
                 "role": "user",
-                "parts": [{
+                "parts": std::iter::once(json!({
                     "functionResponse": {
                         "id": call_id,
                         "name": name,
                         "response": { "success": success, "output": output }
                     }
-                }]
+                })).chain(images.iter().filter_map(|image| { let (mime_type,data)=super::split_image_data_url(&image.data_url)?; Some(json!({"inlineData":{"mimeType":mime_type,"data":data}})) })).collect::<Vec<_>>()
             })),
             ProviderMessage::ProviderContext { .. } => None,
         })
@@ -646,6 +646,7 @@ mod tests {
                     name: "read_file".into(),
                     success: true,
                     output: "private tool output".into(),
+                    images: Vec::new(),
                 },
                 ProviderMessage::Text {
                     role: MessageRole::User,
@@ -757,6 +758,7 @@ mod tests {
                 name: "read_file".to_string(),
                 success: true,
                 output: "docs".to_string(),
+                images: Vec::new(),
             },
         ]);
         assert_eq!(contents[0]["parts"][0]["text"], "I will inspect it.");

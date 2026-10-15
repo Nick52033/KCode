@@ -992,6 +992,7 @@ impl ToolHandler for ListDirectoryTool {
         let directory_revision = sha256_hex(output.as_bytes());
         Ok(ToolResult {
             success: true,
+            images: Vec::new(),
             output,
             metadata: json!({
                 "path": normalized_path,
@@ -1135,6 +1136,7 @@ impl ToolHandler for ReadFileTool {
         let end_line = start_line.saturating_add(lines_returned.saturating_sub(1));
         Ok(ToolResult {
             success: true,
+            images: Vec::new(),
             output,
             metadata: json!({
                 "path": normalized_path,
@@ -1323,6 +1325,7 @@ impl ToolHandler for RunCommandTool {
             // result loop. A corrected call must go through authorization again.
             return Ok(ToolResult {
                 success: false,
+                images: Vec::new(),
                 output: format!("命令未执行：{hint}"),
                 metadata: json!({
                     "shell": shell,
@@ -1495,6 +1498,7 @@ impl ToolHandler for RunCommandTool {
             .map_err(|error| ToolError::Execution(error.to_string()))?;
         Ok(ToolResult {
             success,
+            images: Vec::new(),
             output: text,
             metadata,
         })
@@ -1850,6 +1854,7 @@ fn change_result(change_set: ChangeSet) -> Result<ToolResult, ToolError> {
     let file_count = change_set.files.len();
     Ok(ToolResult {
         success: true,
+        images: Vec::new(),
         output: format!(
             "applied approved change {} to {file_count} file(s)",
             change_set.id
@@ -1942,6 +1947,7 @@ mod tests {
         ) -> Result<ToolResult, ToolError> {
             Ok(ToolResult {
                 success: true,
+                images: Vec::new(),
                 output: "ok".into(),
                 metadata: json!({}),
             })

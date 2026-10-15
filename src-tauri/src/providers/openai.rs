@@ -17,7 +17,15 @@ use super::{
 };
 use crate::protocol::{MessageRole, ReasoningEffort, TokenUsage, TokenUsageDetails, ToolCall};
 
-const OPENAI_REQUEST_TIMEOUT_SECONDS: u64 = 120;
+// Codex does not impose a global request deadline for OpenAI streaming calls;
+// it uses a five-minute stream-idle timeout instead. KCode keeps a bounded
+// ten-minute total deadline so a stuck request can still be cleaned up without
+// truncating a healthy reasoning or tool-call stream after two minutes.
+const OPENAI_REQUEST_TIMEOUT_SECONDS: u64 = 600;
+// Step-Code also leaves OpenAI-compatible Step requests at a long-running
+// ten-minute SDK window. Step reasoning can spend several minutes before
+// producing the first visible token, so it uses the same KCode cap.
+const STEP_REQUEST_TIMEOUT_SECONDS: u64 = 600;
 const DEEPSEEK_REQUEST_TIMEOUT_SECONDS: u64 = 300;
 const MAX_DEEPSEEK_REASONING_BYTES: usize = 2 * 1024 * 1024;
 const MAX_DEEPSEEK_REASONING_CACHE_BYTES: usize = 4 * 1024 * 1024;
@@ -246,12 +254,7 @@ impl OpenAiChatCompletionsProvider {
         let config = config
             .validate()
             .map_err(|error| ProviderError::Request(error.to_string()))?;
-        let timeout_seconds = match &dialect {
-            ChatCompletionsDialect::OpenAi | ChatCompletionsDialect::Step(_) => {
-                OPENAI_REQUEST_TIMEOUT_SECONDS
-            }
-            ChatCompletionsDialect::DeepSeek(_) => DEEPSEEK_REQUEST_TIMEOUT_SECONDS,
-        };
+        let timeout_seconds = request_timeout_seconds(&dialect);
         let client = Client::builder()
             .redirect(reqwest::redirect::Policy::none())
             .timeout(std::time::Duration::from_secs(timeout_seconds))
@@ -354,6 +357,14 @@ impl OpenAiChatCompletionsProvider {
                 .json(payload)
                 .send() => response.map_err(|error| ProviderError::Request(error.to_string())),
         }
+    }
+}
+
+fn request_timeout_seconds(dialect: &ChatCompletionsDialect) -> u64 {
+    match dialect {
+        ChatCompletionsDialect::OpenAi => OPENAI_REQUEST_TIMEOUT_SECONDS,
+        ChatCompletionsDialect::Step(_) => STEP_REQUEST_TIMEOUT_SECONDS,
+        ChatCompletionsDialect::DeepSeek(_) => DEEPSEEK_REQUEST_TIMEOUT_SECONDS,
     }
 }
 
@@ -894,10 +905,10 @@ fn chat_messages(messages: &[ProviderMessage]) -> Vec<Value> {
                     "function": { "name": call.name, "arguments": call.arguments.to_string() }
                 })).collect::<Vec<_>>()
             })),
-            ProviderMessage::ToolResult { call_id, output, .. } => Some(json!({
+            ProviderMessage::ToolResult { call_id, output, images, .. } => Some(json!({
                 "role": "tool",
                 "tool_call_id": call_id,
-                "content": output
+                "content": if images.is_empty() { Value::String(output.clone()) } else { Value::Array(std::iter::once(json!({"type":"text","text":output})).chain(images.iter().map(|image| json!({"type":"image_url","image_url":{"url":image.data_url}}))).collect::<Vec<_>>()) }
             })),
             ProviderMessage::ProviderContext { .. } => None,
         })
@@ -957,6 +968,7 @@ fn step_chat_messages(
                 name,
                 success,
                 output,
+                ..
             } if native_call_ids.contains(call_id) => wire.push(json!({
                 "role": "tool",
                 "tool_call_id": call_id,
@@ -1097,6 +1109,7 @@ fn legacy_deepseek_artifacts(messages: &[ProviderMessage]) -> Vec<String> {
                 name,
                 success,
                 output,
+                ..
             } => Some(format!(
                 "{LEGACY_DEEPSEEK_TOOL_RESULT_MARKER}{name} ({call_id}); status: {}]\n{output}",
                 if *success { "success" } else { "failed" }
@@ -1262,6 +1275,7 @@ fn deepseek_chat_messages(
                 name: _,
                 success: _,
                 output,
+                ..
             } if native_call_ids.contains(call_id) => wire.push(json!({
                 "role": "tool",
                 "tool_call_id": call_id,
@@ -1272,6 +1286,7 @@ fn deepseek_chat_messages(
                 name,
                 success,
                 output,
+                ..
             } => push_plain_assistant_context(
                 &mut wire,
                 historical_tool_observation(name, *success, output),
@@ -1416,6 +1431,22 @@ mod tests {
             endpoints: Vec::new(),
             fallback_provider_ids: Vec::new(),
         }
+    }
+
+    #[test]
+    fn openai_compatible_requests_use_long_timeout_for_reasoning() {
+        assert_eq!(
+            request_timeout_seconds(&ChatCompletionsDialect::OpenAi),
+            600
+        );
+        assert_eq!(
+            request_timeout_seconds(&ChatCompletionsDialect::Step(StepReasoningState::default())),
+            600
+        );
+        assert_eq!(
+            request_timeout_seconds(&ChatCompletionsDialect::DeepSeek(DeepSeekState::default())),
+            300
+        );
     }
 
     fn provider_request(
@@ -1603,6 +1634,7 @@ mod tests {
                     name: "read_file".into(),
                     success: true,
                     output: "file contents".into(),
+                    images: Vec::new(),
                 },
             ],
             &state,
@@ -1625,6 +1657,7 @@ mod tests {
                     name: "read_file".into(),
                     success: true,
                     output: "file contents".into(),
+                    images: Vec::new(),
                 },
             ],
             &state,
@@ -1666,6 +1699,7 @@ mod tests {
                     name: "read_file".into(),
                     success: true,
                     output: "file contents".into(),
+                    images: Vec::new(),
                 },
             ],
             &StepReasoningState::default(),
@@ -1705,6 +1739,7 @@ mod tests {
                         name: "read_file".into(),
                         success: true,
                         output: "file contents".into(),
+                        images: Vec::new(),
                     },
                 ],
                 &StepReasoningState::default(),
@@ -1831,6 +1866,7 @@ mod tests {
                     name: "read_file".to_string(),
                     success: true,
                     output: "README 内容".to_string(),
+                    images: Vec::new(),
                 },
             ],
         );
@@ -2008,6 +2044,7 @@ mod tests {
                 name: "read_file".to_string(),
                 success: true,
                 output: "text".to_string(),
+                images: Vec::new(),
             },
         ]);
         assert_eq!(
@@ -2097,6 +2134,7 @@ mod tests {
                     name: "read_file".to_string(),
                     success: true,
                     output: "contents".to_string(),
+                    images: Vec::new(),
                 },
             ],
             &DeepSeekState::default(),
@@ -2128,6 +2166,7 @@ mod tests {
                     name: "read_file".to_string(),
                     success: true,
                     output: "contents".to_string(),
+                    images: Vec::new(),
                 },
             ],
             &disabled_state,
@@ -2156,6 +2195,7 @@ mod tests {
                     name: "read_file".to_string(),
                     success: true,
                     output: "contents".to_string(),
+                    images: Vec::new(),
                 },
             ],
             &whitespace_state,
@@ -2304,6 +2344,7 @@ mod tests {
                     name: "read_file".to_string(),
                     success: true,
                     output: String::new(),
+                    images: Vec::new(),
                 },
             ],
             &state,
@@ -2337,6 +2378,7 @@ mod tests {
                     name: "request_user_input".to_string(),
                     success: false,
                     output: "user skipped the question".to_string(),
+                    images: Vec::new(),
                 },
             ],
             &state,
@@ -2404,6 +2446,7 @@ mod tests {
                     name: "request_user_input".to_string(),
                     success: true,
                     output: "Q: Which field represents invalid data?\nA: IsDeleted = 1".to_string(),
+                    images: Vec::new(),
                 },
             ],
             &DeepSeekState::default(),
@@ -2464,6 +2507,7 @@ mod tests {
                     name: "read_file".to_string(),
                     success: false,
                     output: "path was not found".to_string(),
+                    images: Vec::new(),
                 },
             ],
             &DeepSeekState::default(),
@@ -2508,6 +2552,7 @@ mod tests {
                     name: "request_user_input".to_string(),
                     success: true,
                     output: "raw result".to_string(),
+                    images: Vec::new(),
                 },
                 ProviderMessage::Text {
                     role: MessageRole::Assistant,
@@ -2703,6 +2748,7 @@ mod tests {
                     name: "read_file".to_string(),
                     success: true,
                     output: "contents".to_string(),
+                    images: Vec::new(),
                 },
             ],
         );
@@ -2794,6 +2840,7 @@ mod tests {
                             name: "read_file".to_string(),
                             success: true,
                             output: "contents-marker".to_string(),
+                            images: Vec::new(),
                         },
                     ],
                 ),
@@ -2915,6 +2962,7 @@ mod tests {
                             name: "read_file".to_string(),
                             success: true,
                             output: "contents-marker".to_string(),
+                            images: Vec::new(),
                         },
                     ],
                 ),
@@ -3042,6 +3090,7 @@ mod tests {
                             name: "read_file".to_string(),
                             success: true,
                             output: "result-marker".to_string(),
+                            images: Vec::new(),
                         },
                     ],
                 ),

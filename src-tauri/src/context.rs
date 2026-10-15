@@ -630,6 +630,7 @@ fn summarize_large_tool_result(message: &ProviderMessage) -> ProviderMessage {
         name,
         success,
         output,
+        images,
     } = message
     else {
         return message.clone();
@@ -645,6 +646,7 @@ fn summarize_large_tool_result(message: &ProviderMessage) -> ProviderMessage {
             name: name.clone(),
             success: *success,
             output,
+            images: images.clone(),
         };
     }
 
@@ -663,6 +665,7 @@ fn summarize_large_tool_result(message: &ProviderMessage) -> ProviderMessage {
             bound(&output, TOOL_OUTPUT_PREVIEW_BYTES),
             &output[tail_start..],
         ),
+        images: images.clone(),
     }
 }
 
@@ -797,7 +800,12 @@ fn message_chars(message: &ProviderMessage) -> usize {
                     .map(|call| call.name.len() + call.arguments.to_string().len())
                     .sum::<usize>()
         }
-        ProviderMessage::ToolResult { name, output, .. } => name.len() + output.len(),
+        ProviderMessage::ToolResult {
+            name,
+            output,
+            images,
+            ..
+        } => name.len() + output.len() + images.len() * 4096,
         ProviderMessage::ProviderContext { item, .. } => item.to_string().len(),
     }
 }
@@ -858,6 +866,7 @@ mod tests {
             name: "read_file".into(),
             success: true,
             output: "important".into(),
+            images: Vec::new(),
         });
         let (summary, compacted) = compact_once(&messages, 2_000);
         assert!(
@@ -887,6 +896,7 @@ mod tests {
                 name: "read_file".into(),
                 success: true,
                 output: "JObject.Parse(configJson)".into(),
+                images: Vec::new(),
             }],
             compacted_message_count: 10,
             estimated_before_tokens: 1_000,
@@ -902,12 +912,14 @@ mod tests {
                 name: "read_file".into(),
                 success: true,
                 output: "var value = JObject.Parse(configJson);".into(),
+                images: Vec::new(),
             },
             ProviderMessage::ToolResult {
                 call_id: "patch".into(),
                 name: "apply_patch".into(),
                 success: true,
                 output: "Patch applied successfully to GetCompanyConfig.".into(),
+                images: Vec::new(),
             },
             ProviderMessage::Text {
                 role: MessageRole::Assistant,
@@ -1069,6 +1081,7 @@ mod tests {
             name: "run_command".into(),
             success: false,
             output: "exit code: 1\nerror: test failed\nlong details".into(),
+            images: Vec::new(),
         });
         messages.extend((0..12).map(|index| ProviderMessage::Text {
             role: MessageRole::Assistant,
@@ -1144,6 +1157,7 @@ mod tests {
                     name: "read_file".into(),
                     success: true,
                     output: format!("step {index} path src/lib.rs\n{}", "result ".repeat(3_000)),
+                    images: Vec::new(),
                 });
             }
             (total_estimated_input, compactions)
@@ -1336,12 +1350,14 @@ mod tests {
                 name: "read_file".into(),
                 success: true,
                 output: "obsolete file contents".into(),
+                images: Vec::new(),
             },
             ProviderMessage::ToolResult {
                 call_id: "patch".into(),
                 name: "apply_patch".into(),
                 success: true,
                 output: "applied approved change".into(),
+                images: Vec::new(),
             },
         ];
         let (mut summary, _) = compact(&messages, 2_000, None, &user_context);
@@ -1417,6 +1433,7 @@ mod tests {
                 } else {
                     format!("result-{index}")
                 },
+                images: Vec::new(),
             })
             .collect::<Vec<_>>();
 
@@ -1462,6 +1479,7 @@ mod tests {
             name: "read_file".into(),
             success: true,
             output: "ok".into(),
+            images: Vec::new(),
         });
         let (_, compacted) = compact_once(&messages, 4_000);
         let mut iter = compacted.iter();
@@ -1493,6 +1511,7 @@ mod tests {
             name: "read_file".into(),
             success: true,
             output: "ok".into(),
+            images: Vec::new(),
         };
 
         let complete = repair_tool_history(vec![
@@ -1585,6 +1604,7 @@ mod tests {
                 name: "read_file".into(),
                 success: true,
                 output: format!("failed to load {secret}"),
+                images: Vec::new(),
             },
         ];
         messages.extend((0..10).map(|_| ProviderMessage::Text {
@@ -1597,6 +1617,7 @@ mod tests {
             name: "run_command".into(),
             success: true,
             output: format!("export {secret}"),
+            images: Vec::new(),
         });
 
         let (summary, compacted) = compact_once(&messages, 2_000);
@@ -1662,6 +1683,7 @@ mod tests {
             name: "run_command".into(),
             success: true,
             output,
+            images: Vec::new(),
         });
 
         let (summary, compacted) = compact_once(&messages, 2_000);

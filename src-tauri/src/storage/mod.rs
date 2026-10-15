@@ -3041,6 +3041,7 @@ mod tests {
                     result: ToolResult {
                         success: true,
                         output: "docs".into(),
+                        images: Vec::new(),
                         metadata: serde_json::json!({}),
                     },
                 },
@@ -3503,6 +3504,7 @@ mod tests {
                 result: ToolResult {
                     success: true,
                     output: "read".into(),
+                    images: Vec::new(),
                     metadata: serde_json::json!({}),
                 },
             },

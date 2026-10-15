@@ -279,6 +279,7 @@ impl ToolHandler for SearchTool {
         let result_revision = sha256_hex(output.as_bytes());
         Ok(ToolResult {
             success: true,
+            images: Vec::new(),
             output,
             metadata: json!({
                 "query": observation_query,

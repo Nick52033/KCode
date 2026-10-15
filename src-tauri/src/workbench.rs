@@ -515,6 +515,50 @@ pub fn open_external(root: &Path, relative: &str, reveal: bool) -> Result<(), Wo
     result.map_err(|error| WorkbenchError::Io(error.to_string()))
 }
 
+/// Resolve a path through the persisted project registry before opening it.
+///
+/// The caller may only request a project that is already registered. This keeps the
+/// desktop-only convenience action from becoming an arbitrary-path opener if a renderer
+/// is compromised or sends stale state.
+pub fn open_registered_project_directory(
+    db: &ProjectionDb,
+    requested: &str,
+) -> Result<(), WorkbenchError> {
+    let registered_path = resolve_registered_project_directory(db, requested)?;
+    tauri_plugin_opener::open_path(&shell_compatible_path(&registered_path), None::<&str>)
+        .map_err(|error| WorkbenchError::Io(error.to_string()))
+}
+
+fn resolve_registered_project_directory(
+    db: &ProjectionDb,
+    requested: &str,
+) -> Result<PathBuf, WorkbenchError> {
+    let requested_path = Path::new(requested)
+        .canonicalize()
+        .map_err(|error| WorkbenchError::Io(error.to_string()))?;
+    if !requested_path.is_dir() {
+        return Err(WorkbenchError::Invalid(
+            "project path is not a directory".into(),
+        ));
+    }
+    let requested_key = workspace_path_key(&requested_path.to_string_lossy());
+    let registered = db
+        .list_projects()
+        .map_err(|error| WorkbenchError::Registry(error.to_string()))?
+        .into_iter()
+        .find(|project| workspace_path_key(&project.path) == requested_key)
+        .ok_or_else(|| WorkbenchError::Invalid("project is not registered".into()))?;
+    let registered_path = Path::new(&registered.path)
+        .canonicalize()
+        .map_err(|error| WorkbenchError::Io(error.to_string()))?;
+    if !registered_path.is_dir() {
+        return Err(WorkbenchError::Invalid(
+            "registered project path is not a directory".into(),
+        ));
+    }
+    Ok(registered_path)
+}
+
 fn shell_compatible_path(path: &Path) -> PathBuf {
     #[cfg(windows)]
     {
@@ -987,6 +1031,24 @@ fn language(extension: &str) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn project_directory_open_requires_registered_canonical_directory() {
+        let root = tempfile::tempdir().unwrap();
+        let project = root.path().join("project");
+        let unregistered = root.path().join("unregistered");
+        std::fs::create_dir(&project).unwrap();
+        std::fs::create_dir(&unregistered).unwrap();
+        let db = ProjectionDb::memory().unwrap();
+        register_project(&db, &project, true).unwrap();
+
+        let resolved =
+            resolve_registered_project_directory(&db, &project.to_string_lossy()).unwrap();
+        assert_eq!(resolved, project.canonicalize().unwrap());
+        let error =
+            resolve_registered_project_directory(&db, &unregistered.to_string_lossy()).unwrap_err();
+        assert!(error.to_string().contains("not registered"));
+    }
 
     fn init_repository(root: &Path) {
         git(root, &["init"]).unwrap();

@@ -1516,6 +1516,7 @@ fn optional_string_arg(arguments: &Value, name: &str) -> Option<String> {
 fn tool_json(value: &impl Serialize) -> Result<ToolResult, ToolError> {
     Ok(ToolResult {
         success: true,
+        images: Vec::new(),
         output: serde_json::to_string(value)
             .map_err(|error| ToolError::Execution(error.to_string()))?,
         metadata: json!({"structured":true}),

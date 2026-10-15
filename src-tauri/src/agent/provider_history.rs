@@ -2,7 +2,7 @@ use crate::context::{self, CompactionSummary, CompactionUserContext};
 use std::collections::HashMap;
 
 use crate::protocol::{MessageRole, TokenUsage, ToolResult, UserInputAction, UserInputRequestKind};
-use crate::providers::{ProviderMessage, STEP_CHAT_COMPLETIONS_REPLAY_PROVIDER};
+use crate::providers::{ProviderImage, ProviderMessage, STEP_CHAT_COMPLETIONS_REPLAY_PROVIDER};
 use crate::storage::{StoredEvent, StoredEventKind};
 
 use super::input::chat_to_provider;
@@ -95,6 +95,18 @@ pub(super) fn provider_history_for_turn(
                     name,
                     success: result.success,
                     output,
+                    images: if supports_vision {
+                        result
+                            .images
+                            .into_iter()
+                            .map(|image| ProviderImage {
+                                name: image.name,
+                                data_url: image.data_url,
+                            })
+                            .collect()
+                    } else {
+                        Vec::new()
+                    },
                 })
             }
             StoredEventKind::ProviderContext { provider, item }
@@ -588,6 +600,7 @@ mod tests {
         let result = ToolResult {
             success: true,
             output: "public class ReturnModel {}".into(),
+            images: Vec::new(),
             metadata: serde_json::json!({
                 "path": "Permission.Util/Permission.Util/Model/TData.cs",
                 "fileRevision": "6ab4159a",
@@ -611,6 +624,7 @@ mod tests {
         let result = ToolResult {
             success: true,
             output: "unchanged".into(),
+            images: Vec::new(),
             metadata: serde_json::json!({"path": "src/lib.rs"}),
         };
 
@@ -623,6 +637,7 @@ mod tests {
         let result = ToolResult {
             success: true,
             output: "public class ReturnModel {}".into(),
+            images: Vec::new(),
             metadata: serde_json::json!({
                 "path": "Permission.Util/Permission.Util/Model/TData.cs",
                 "fileRevision": "6ab4159a",
@@ -635,6 +650,7 @@ mod tests {
             name: "read_file".into(),
             success: true,
             output: provider_tool_output("read_file", &result),
+            images: Vec::new(),
         }];
         let user_context = CompactionUserContext::default();
 

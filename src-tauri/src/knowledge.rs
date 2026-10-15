@@ -3497,6 +3497,7 @@ impl ToolHandler for KnowledgeSearchTool {
             .map_err(|error| ToolError::Execution(error.to_string()))?;
         Ok(ToolResult {
             success: true,
+            images: Vec::new(),
             output: serde_json::to_string_pretty(&response)
                 .map_err(|error| ToolError::Execution(error.to_string()))?,
             metadata: json!({"retrievalMode":response.metadata["retrievalMode"],"resultCount":response.results.len()}),
@@ -3542,6 +3543,7 @@ impl ToolHandler for KnowledgeCitationTool {
             .map_err(|error| ToolError::Execution(error.to_string()))?;
         Ok(ToolResult {
             success: true,
+            images: Vec::new(),
             output: serde_json::to_string_pretty(&citation)
                 .map_err(|error| ToolError::Execution(error.to_string()))?,
             metadata: json!({"citationId":citation_id,"revision":citation.revision}),

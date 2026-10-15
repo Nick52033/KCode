@@ -3236,6 +3236,16 @@ pub fn reveal_workspace_file(state: State<'_, AppState>, path: String) -> Comman
         .map_err(|error| CommandError::new("file_reveal", error))
 }
 
+/// 在系统文件管理器中打开已登记的项目目录。
+///
+/// 项目路径来自前端展示状态，不能直接作为授权依据；后端必须从项目注册表中
+/// 找到同一路径并重新规范化后才能交给系统打开器。
+#[tauri::command(rename_all = "camelCase")]
+pub fn open_project_directory(state: State<'_, AppState>, path: String) -> CommandResult<()> {
+    workbench::open_registered_project_directory(&state.repository().projection(), &path)
+        .map_err(|error| CommandError::new("project_directory_open", error))
+}
+
 #[tauri::command]
 pub fn git_status(state: State<'_, AppState>) -> CommandResult<GitStatusView> {
     workbench::git_status(&state.workspace_root()).map_err(|error| CommandError::new("git", error))
@@ -4834,6 +4844,7 @@ mod tests {
             result: crate::protocol::ToolResult {
                 success: true,
                 output: "private tool output".into(),
+                images: Vec::new(),
                 metadata: json!({}),
             },
         }));

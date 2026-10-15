@@ -288,6 +288,7 @@ impl ToolHandler for GoalTool {
             .map_err(ToolError::Execution)?;
         Ok(ToolResult {
             success: true,
+            images: Vec::new(),
             output: serde_json::to_string(&updated)
                 .map_err(|error| ToolError::Execution(error.to_string()))?,
             metadata: json!({"state": updated.state}),

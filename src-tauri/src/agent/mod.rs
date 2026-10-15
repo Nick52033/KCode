@@ -3608,6 +3608,7 @@ impl AgentRuntime {
                     .join("\n\n");
                 Ok(Some(ToolResult {
                     success: true,
+                    images: Vec::new(),
                     output: summary,
                     metadata: serde_json::to_value(&resolution.answers)
                         .unwrap_or(serde_json::Value::Null),
@@ -3653,6 +3654,7 @@ impl AgentRuntime {
 
         Ok(Some(ToolResult {
             success: true,
+            images: Vec::new(),
             output: "Task list updated successfully.".to_string(),
             metadata: serde_json::Value::Null,
         }))
@@ -4627,6 +4629,7 @@ fn bound_tool_result(mut result: ToolResult) -> ToolResult {
 fn failure_result(message: String) -> ToolResult {
     ToolResult {
         success: false,
+        images: Vec::new(),
         output: message,
         metadata: json!({ "error": true }),
     }
@@ -5001,6 +5004,7 @@ mod tests {
             tokio::time::sleep(Duration::from_millis(delay_ms)).await;
             Ok(ToolResult {
                 success: true,
+                images: Vec::new(),
                 output: label.to_string(),
                 metadata: json!({}),
             })
@@ -5052,6 +5056,7 @@ mod tests {
                     format!("file check failed: expected {expected:?}, got {actual:?}")
                 },
                 metadata: json!({}),
+                images: Vec::new(),
             })
         }
     }
@@ -5074,6 +5079,7 @@ mod tests {
         ) -> Result<ToolResult, ToolError> {
             Ok(ToolResult {
                 success: true,
+                images: Vec::new(),
                 output: "external completed".into(),
                 metadata: json!({ "mcp": true }),
             })
@@ -5104,6 +5110,7 @@ mod tests {
                 _ = cancellation.cancelled() => Err(ToolError::Cancelled),
                 _ = tokio::time::sleep(Duration::from_secs(10)) => Ok(ToolResult {
                     success: true,
+                    images: Vec::new(),
                     output: "late".to_string(),
                     metadata: json!({}),
                 }),
@@ -5156,6 +5163,7 @@ mod tests {
         };
         let mut result = ToolResult {
             success: true,
+            images: Vec::new(),
             output: json!({"timedOut": true, "agents": [{"id": "a", "state": "running"}]})
                 .to_string(),
             metadata: json!({}),
@@ -5216,6 +5224,7 @@ mod tests {
         let original = format!("HEAD\n{}\nTAIL", "x".repeat(MAX_TOOL_OUTPUT_BYTES));
         let result = bound_tool_result(ToolResult {
             success: true,
+            images: Vec::new(),
             output: original,
             metadata: json!({}),
         });
@@ -5236,6 +5245,7 @@ mod tests {
     ) -> ToolResult {
         ToolResult {
             success: true,
+            images: Vec::new(),
             output: "file contents".to_string(),
             metadata: json!({
                 "path": path,
@@ -9907,6 +9917,7 @@ mod tests {
                 name: "read_file".to_string(),
                 success: true,
                 output: "important result".to_string(),
+                images: Vec::new(),
             }],
             compacted_message_count: 10,
             estimated_before_tokens: 0,
@@ -10043,6 +10054,7 @@ mod tests {
                         name: "read_file".to_string(),
                         result: ToolResult {
                             success: true,
+                            images: Vec::new(),
                             output: "a".to_string(),
                             metadata: json!({}),
                         },
@@ -10098,6 +10110,7 @@ mod tests {
                     name: "read_file".to_string(),
                     result: ToolResult {
                         success: true,
+                        images: Vec::new(),
                         output: "a".to_string(),
                         metadata: json!({}),
                     },

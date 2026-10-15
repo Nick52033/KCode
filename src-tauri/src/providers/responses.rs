@@ -276,11 +276,16 @@ fn responses_input(messages: &[ProviderMessage]) -> Vec<Value> {
                     item
                 }))
                 .collect(),
-            ProviderMessage::ToolResult { call_id, output, .. } => vec![json!({
-                "type": "function_call_output",
-                "call_id": call_id,
-                "output": output
-            })],
+            ProviderMessage::ToolResult { call_id, output, images, .. } => {
+                let output_value = if images.is_empty() {
+                    json!(output)
+                } else {
+                    let mut content = vec![json!({"type":"input_text","text": output})];
+                    content.extend(images.iter().map(|image| json!({"type":"input_image","image_url":image.data_url})));
+                    json!(content)
+                };
+                vec![json!({"type":"function_call_output","call_id":call_id,"output":output_value})]
+            }
             ProviderMessage::ProviderContext { provider, item }
                 if provider == "openai_responses" => vec![item.clone()],
             ProviderMessage::ProviderContext { .. } => Vec::new(),
@@ -603,6 +608,7 @@ mod tests {
                 name: "read_file".to_string(),
                 success: true,
                 output: "docs".to_string(),
+                images: Vec::new(),
             },
         ]);
         assert_eq!(input[0]["role"], "assistant");
@@ -620,5 +626,25 @@ mod tests {
             }],
         }]);
         assert_eq!(input[0]["content"][1]["type"], "input_image");
+    }
+
+    #[test]
+    fn serializes_tool_image_as_responses_content_item() {
+        let input = responses_input(&[ProviderMessage::ToolResult {
+            call_id: "call".into(),
+            name: "browser_screenshot".into(),
+            success: true,
+            output: "{\"name\":\"screen.png\"}".into(),
+            images: vec![ProviderImage {
+                name: "screen.png".into(),
+                data_url: "data:image/png;base64,AA==".into(),
+            }],
+        }]);
+        assert_eq!(input[0]["output"][0]["type"], "input_text");
+        assert_eq!(input[0]["output"][1]["type"], "input_image");
+        assert_eq!(
+            input[0]["output"][1]["image_url"],
+            "data:image/png;base64,AA=="
+        );
     }
 }

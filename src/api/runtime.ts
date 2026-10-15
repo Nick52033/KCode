@@ -518,6 +518,8 @@ export function extractAttachment(path: string) { return invoke<AttachmentConten
 export function extractLocalDocument(name: string, dataUrl: string) { return invoke<AttachmentContent>("extract_local_document", { name, dataUrl }); }
 export function openWorkspaceFile(path: string) { return invoke<void>("open_workspace_file", { path }); }
 export function revealWorkspaceFile(path: string) { return invoke<void>("reveal_workspace_file", { path }); }
+/** 在系统文件管理器中打开已登记的项目目录。 */
+export function openProjectDirectory(path: string) { return invoke<void>("open_project_directory", { path }); }
 export function getGitStatus() { return invoke<GitStatusView>("git_status"); }
 export function getGitDiff(path?: string, staged = false) { return invoke<string>("git_diff", { path, staged }); }
 export function getGitBranches() { return invoke<GitBranchView>("git_branches"); }

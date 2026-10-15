@@ -598,6 +598,7 @@ mod tests {
                     name: "read_file".into(),
                     success: true,
                     output: "must not be sent to an image model".into(),
+                    images: Vec::new(),
                 },
                 ProviderMessage::Text {
                     role: MessageRole::User,
@@ -902,6 +903,7 @@ mod tests {
                     name: "read_file".into(),
                     success: true,
                     output: "private tool output".into(),
+                    images: Vec::new(),
                 },
                 ProviderMessage::Text {
                     role: MessageRole::User,

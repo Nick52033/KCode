@@ -2001,6 +2001,7 @@ impl ToolHandler for CompleteWorkflowNodeTool {
         .map_err(|error| ToolError::Execution(error.to_string()))?;
         Ok(ToolResult {
             success: true,
+            images: Vec::new(),
             output,
             metadata: json!({
                 "workflowRunId": updated.id,

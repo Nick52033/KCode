@@ -465,6 +465,7 @@ mod tests {
                     state: ToolActivityState::Completed,
                     result: Some(ToolResult {
                         success: true,
+                        images: Vec::new(),
                         output: output.to_string(),
                         metadata: serde_json::json!({ "absolute": "D:\\code\\secret.txt" }),
                     }),

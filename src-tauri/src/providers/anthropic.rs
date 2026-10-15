@@ -374,11 +374,12 @@ fn anthropic_messages(messages: &[ProviderMessage]) -> Vec<Value> {
                     "type": "tool_use", "id": call.id, "name": call.name, "input": call.arguments
                 }))).collect::<Vec<_>>()
             })),
-            ProviderMessage::ToolResult { call_id, success, output, .. } => {
+            ProviderMessage::ToolResult { call_id, success, output, images, .. } => {
+                let content = if images.is_empty() { json!(output) } else { json!(std::iter::once(json!({"type":"text","text":output})).chain(images.iter().filter_map(|image| { let (media_type,data)=super::split_image_data_url(&image.data_url)?; Some(json!({"type":"image","source":{"type":"base64","media_type":media_type,"data":data}})) })).collect::<Vec<_>>()) };
                 let block = json!({
                     "type": "tool_result",
                     "tool_use_id": call_id,
-                    "content": output,
+                    "content": content,
                     "is_error": !success
                 });
                 if let Some(last) = result.last_mut().filter(|last| {
@@ -538,6 +539,7 @@ mod tests {
             name: "read_file".to_string(),
             success: false,
             output: "denied".to_string(),
+            images: Vec::new(),
         }]);
         assert_eq!(messages[0]["content"][0]["type"], "tool_result");
         assert_eq!(messages[0]["content"][0]["is_error"], true);

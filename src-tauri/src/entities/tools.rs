@@ -95,6 +95,7 @@ impl ToolHandler for ProposeKnowledgeFactTool {
         let fact = outcome.fact();
         Ok(ToolResult {
             success: true,
+            images: Vec::new(),
             output: serde_json::to_string_pretty(&json!({
                 "status": outcome.status(),
                 "fact": fact,
@@ -148,6 +149,7 @@ impl ToolHandler for KnowledgeRelationsTool {
             .map_err(|error| ToolError::Execution(error.to_string()))?;
         Ok(ToolResult {
             success: true,
+            images: Vec::new(),
             output: serde_json::to_string_pretty(&result)
                 .map_err(|error| ToolError::Execution(error.to_string()))?,
             metadata: json!({

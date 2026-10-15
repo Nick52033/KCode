@@ -1036,6 +1036,7 @@ fn tool_result(value: Value) -> Result<ToolResult, ToolError> {
     }
     Ok(ToolResult {
         success: !is_error,
+        images: Vec::new(),
         output,
         metadata: json!({ "mcp": true }),
     })

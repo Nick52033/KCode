@@ -16,6 +16,7 @@ import {
   Copy,
   FileDiff,
   Folder,
+  FolderOpen,
   FolderPlus,
   Hammer,
   History,
@@ -45,7 +46,7 @@ import {
   Target,
 } from "lucide-react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { extractLocalDocument, getRuntimeStatus, getWorkspaceState, registerProjectPaths as registerProjectPathsOnServer, removeProjectPath, switchWorkspace, subscribeToAgentEvents, subscribeToMailboxEvents, subscribeToSubagentEvents, listSubagents, getExtensionOverview, searchWorkspaceFiles } from "./api/runtime";
+import { extractLocalDocument, getRuntimeStatus, getWorkspaceState, registerProjectPaths as registerProjectPathsOnServer, removeProjectPath, switchWorkspace, subscribeToAgentEvents, subscribeToMailboxEvents, subscribeToSubagentEvents, listSubagents, getExtensionOverview, searchWorkspaceFiles, openProjectDirectory } from "./api/runtime";
 import { useWorkbenchStore } from "./stores/workbenchStore";
 import { workflowProgressPlan } from "./lib/workflowProgress";
 import {
@@ -475,6 +476,8 @@ function App() {
   });
   const [agentMode, setAgentMode] = useState<"craft" | "ask" | "plan">("craft");
   const [selectedWorkflowId, setSelectedWorkflowId] = useState<string | null>(null);
+  // 记录由机器人选择器自动插入的提及，切换机器人时只替换这一段，不碰用户已经写好的正文。
+  const workflowMentionRef = useRef<string | null>(null);
   const [modeMenuOpen, setModeMenuOpen] = useState(false);
   const [modeMenuPosition, setModeMenuPosition] = useState({ left: 12, bottom: 48, width: 260, maxHeight: 320 });
   const [expandedChangeSets, setExpandedChangeSets] = useState<Set<string>>(new Set());
@@ -1144,6 +1147,15 @@ function App() {
       });
     }
     setProjectMenuOpen(null);
+  };
+
+  const openProjectFolder = async (projectPath: string) => {
+    setProjectMenuOpen(null);
+    try {
+      await openProjectDirectory(projectPath);
+    } catch (reason) {
+      toast.error(`无法打开项目文件夹：${toReadableError(reason)}`);
+    }
   };
 
   const toggleTheme = () => {
@@ -1866,6 +1878,38 @@ function App() {
       : findComposerTrigger(value, event.currentTarget.selectionStart ?? value.length));
   }
 
+  function selectComposerWorkflow(workflowId: string | null) {
+    const previousMention = workflowMentionRef.current;
+    const previousMentionText = previousMention
+      ? `@${workflows.find((workflow) => workflow.id === previousMention)?.name ?? ""}`
+      : "";
+    const currentDraft = draft;
+    const hasAutomaticMention = Boolean(previousMentionText)
+      && (currentDraft === previousMentionText || currentDraft.startsWith(`${previousMentionText} `));
+    const body = hasAutomaticMention
+      ? currentDraft.slice(previousMentionText.length).replace(/^\s+/, "")
+      : currentDraft.trimStart();
+    const nextWorkflow = workflowId ? workflows.find((workflow) => workflow.id === workflowId) : null;
+
+    setSelectedWorkflowId(workflowId);
+    workflowMentionRef.current = workflowId;
+    setComposerTrigger(null);
+    if (!nextWorkflow) {
+      if (hasAutomaticMention) setDraft(body);
+      return;
+    }
+
+    const mention = `@${nextWorkflow.name}`;
+    setDraft(body ? `${mention} ${body}` : `${mention} `);
+    requestAnimationFrame(() => {
+      const textarea = composerRef.current;
+      if (!textarea) return;
+      textarea.focus();
+      const cursor = textarea.value.length;
+      textarea.setSelectionRange(cursor, cursor);
+    });
+  }
+
   function insertComposerSuggestion(suggestion: ComposerSuggestion) {
     const trigger = composerTrigger;
     if (!trigger) return;
@@ -2541,7 +2585,12 @@ function App() {
                         "project-group-header",
                         isExpanded && "project-group-header--expanded",
                         isActiveProject && "project-group-header--active",
-                      )}>
+                      )}
+                        onContextMenu={(event) => {
+                          event.preventDefault();
+                          setProjectMenuOpen(projectMenuOpen === projectPath ? null : projectPath);
+                        }}
+                      >
                         <button
                           type="button"
                           className="project-group-toggle"
@@ -2602,6 +2651,13 @@ function App() {
                                   ) : (
                                     <><Pin size={13} /><span>置顶</span></>
                                   )}
+                                </button>
+                                <button
+                                  type="button"
+                                  title="在文件管理器中打开项目文件夹"
+                                  onClick={() => void openProjectFolder(projectPath)}
+                                >
+                                  <FolderOpen size={13} /><span>打开项目文件夹</span>
                                 </button>
                                 <button
                                   type="button"
@@ -3132,7 +3188,7 @@ function App() {
               disabled={currentThreadBusy || Boolean(queuedWorkflowId)}
               compact
               onSelect={(workflowId) => {
-                setSelectedWorkflowId(workflowId);
+                selectComposerWorkflow(workflowId);
                 if (workflowId) setAgentMode("craft");
                 setModeMenuOpen(false);
               }}

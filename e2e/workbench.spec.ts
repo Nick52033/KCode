@@ -1571,7 +1571,19 @@ test("starts a built-in robot workflow from the composer and cancels it after th
   await expect(robotSelector).toContainText("软件测试机器人");
   await expect(page.getByRole("button", { name: "选择模式" })).toBeDisabled();
 
-  await page.getByRole("textbox", { name: "消息" }).fill("验证机器人工作流");
+  const composer = page.getByRole("textbox", { name: "消息" });
+  await expect(composer).toHaveValue("@软件测试机器人 ");
+  await composer.fill("@软件测试机器人 检查接口回归");
+  await robotSelector.click();
+  await robotMenu.getByRole("menuitemradio", { name: /全栈开发机器人/ }).click();
+  await expect(composer).toHaveValue("@全栈开发机器人 检查接口回归");
+  await robotSelector.click();
+  await robotMenu.getByRole("menuitemradio", { name: /普通智能体/ }).click();
+  await expect(composer).toHaveValue("检查接口回归");
+  await robotSelector.click();
+  await robotMenu.getByRole("menuitemradio", { name: /软件测试机器人/ }).click();
+
+  await composer.fill("@软件测试机器人 验证机器人工作流");
   await page.getByRole("button", { name: "发送消息", exact: true }).click();
   await expect.poll(() => page.evaluate(() => {
     const call = (window as unknown as {
@@ -1581,7 +1593,7 @@ test("starts a built-in robot workflow from the composer and cancels it after th
   })).toEqual({
     workflowId: "quality-assurance",
     agentMode: "craft",
-    input: "验证机器人工作流",
+    input: "@软件测试机器人 验证机器人工作流",
   });
 
   const control = page.getByLabel("机器人工作流 软件测试机器人");
