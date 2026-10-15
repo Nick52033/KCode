@@ -118,6 +118,7 @@ const TURN_CONTINUE: &str = "continue";
 const TURN_COMPACT_AND_CONTINUE: &str = "compact_and_continue";
 const TURN_STOP: &str = "stop";
 const MAX_PLAN_RECONCILIATION_DRAFT_BYTES: usize = 16 * 1024;
+const MAX_PENDING_WORKSPACE_REVALIDATION_PATHS: usize = 64;
 const PLAN_RECONCILIATION_INSTRUCTIONS: &str = "[计划收尾门禁]\n当前回复已经形成最终答复草稿，但本轮刚刚更新的普通计划仍有进行中步骤。请先调用 update_plan 提交完整 steps 列表，只把已真实完成的步骤标为 completed，未完成步骤保留真实状态；工具成功后再输出最终答复。不要为了通过门禁伪造完成状态。收尾同步不得新增步骤、删除步骤、改变步骤数量或新增/替换步骤 ID；必须提交收尾请求开始前已有的完整 steps 列表，只更新真实状态和 detail，步骤文本也不要改名。若工具拒绝了计划结构，请按拒绝原因修正后重试。\n";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -469,6 +470,49 @@ fn change_set_has_productive_file_changes(result: &ToolResult) -> bool {
                 .any(|path| !is_temporary_probe_path(path))
             })
         })
+}
+
+fn workspace_path_key(path: &str) -> String {
+    let normalized = path.replace('\\', "/");
+    if cfg!(windows) {
+        normalized.to_ascii_lowercase()
+    } else {
+        normalized
+    }
+}
+
+fn workspace_mutation_paths(result: &ToolResult) -> Vec<String> {
+    result
+        .metadata
+        .get("changeSet")
+        .and_then(|change_set| change_set.get("files"))
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .flat_map(|file| {
+            [
+                file.get("path").and_then(Value::as_str),
+                file.get("destinationPath").and_then(Value::as_str),
+            ]
+            .into_iter()
+            .flatten()
+        })
+        .filter(|path| !path.trim().is_empty())
+        .map(workspace_path_key)
+        .collect()
+}
+
+fn workspace_revalidation_instructions(paths: &HashSet<String>) -> String {
+    if paths.is_empty() {
+        return String::new();
+    }
+    let mut paths = paths.iter().cloned().collect::<Vec<_>>();
+    paths.sort();
+    paths.truncate(MAX_PENDING_WORKSPACE_REVALIDATION_PATHS);
+    format!(
+        "\n\n[workspace revalidation] 刚刚成功修改了以下文件：{}。在再次写入这些文件前，必须先用 read_file 读取当前目标区域。成功补丁已经改变了旧 hunk，不能复用写入前的上下文。\n",
+        paths.join(", ")
+    )
 }
 
 fn is_temporary_probe_path(path: &str) -> bool {
@@ -1375,6 +1419,10 @@ impl AgentRuntime {
         let mut tool_call_count = 0u32;
         let mut apply_patch_failures = ApplyPatchFailureTracker::default();
         let mut apply_patch_recovery_rounds = 0usize;
+        // A successful write invalidates any hunk the model prepared from the
+        // pre-write file. Keep this separate from patch-failure recovery: it is
+        // a one-time context nudge, not a tool gate or a new failure budget.
+        let mut pending_workspace_revalidation = HashSet::<String>::new();
 
         let mut iteration = 0usize;
         loop {
@@ -1567,6 +1615,8 @@ impl AgentRuntime {
                 request_runtime_instructions
                     .push_str(&active_apply_patch_recovery_instructions(&apply_patch_failures));
             }
+            request_runtime_instructions
+                .push_str(&workspace_revalidation_instructions(&pending_workspace_revalidation));
             let events = self.repository.load(&thread_id).await?;
             let last_context_usage = last_active_context_usage(&events);
             let provider_history =
@@ -2841,9 +2891,22 @@ impl AgentRuntime {
                     stop_reason = Some(reason);
                 }
 
+                if call.name == "read_file" && result.success {
+                    if let Some(path) = result.metadata.get("path").and_then(Value::as_str) {
+                        pending_workspace_revalidation.remove(&workspace_path_key(path));
+                    }
+                }
+
                 if matches!(call.name.as_str(), "apply_patch" | "write_file")
                     && result.success
                 {
+                    for path in workspace_mutation_paths(&result) {
+                        if pending_workspace_revalidation.len()
+                            < MAX_PENDING_WORKSPACE_REVALIDATION_PATHS
+                        {
+                            pending_workspace_revalidation.insert(path);
+                        }
+                    }
                     // Any successful workspace mutation changes the facts behind the failed
                     // patch. The previous recovery budget is stale, regardless of which write
                     // tool made the progress.
@@ -10468,6 +10531,35 @@ mod tests {
         assert_eq!(tracker.observe(&first, &first_result), 1);
     }
 
+    #[test]
+    fn workspace_revalidation_is_path_scoped_and_clears_after_read() {
+        let result = ToolResult {
+            success: true,
+            output: String::new(),
+            images: Vec::new(),
+            metadata: json!({
+                "changeSet": {
+                    "files": [{
+                        "path": "src\\injected.js",
+                        "destinationPath": "src/copy.js"
+                    }]
+                }
+            }),
+        };
+        let mut pending = HashSet::new();
+        for path in workspace_mutation_paths(&result) {
+            pending.insert(path);
+        }
+
+        let guidance = workspace_revalidation_instructions(&pending);
+        assert!(guidance.contains("src/injected.js"));
+        assert!(guidance.contains("src/copy.js"));
+
+        pending.remove(&workspace_path_key("src/injected.js"));
+        assert!(!workspace_revalidation_instructions(&pending).contains("src/injected.js"));
+        assert!(workspace_revalidation_instructions(&pending).contains("src/copy.js"));
+    }
+
     async fn editing_runtime(
         workspace: &Path,
         timeout: Duration,
@@ -10770,11 +10862,11 @@ mod tests {
             "*** Begin Patch\n*** Update File: file.txt\n@@\n context only\n*** End Patch";
         let final_patch =
             "*** Begin Patch\n*** Update File: file.txt\n@@\n-after\n+final\n*** End Patch";
-        let read_file = |id: String, start_line: usize| ToolCall {
+        let read_file = |id: String, path: &str, start_line: usize| ToolCall {
             id,
             name: "read_file".to_string(),
             arguments: json!({
-                "path": "other.txt",
+                "path": path,
                 "startLine": start_line,
                 "lineCount": 1,
             }),
@@ -10802,10 +10894,16 @@ mod tests {
                 Ok(ProviderEvent::Completed),
             ],
         ];
+        scripts.push(vec![
+            Ok(ProviderEvent::ToolCall {
+                call: read_file("read-current".to_string(), "file.txt", 1),
+            }),
+            Ok(ProviderEvent::Completed),
+        ]);
         for index in 0..5 {
             scripts.push(vec![
                 Ok(ProviderEvent::ToolCall {
-                    call: read_file(format!("read-{index}"), index + 1),
+                    call: read_file(format!("read-{index}"), "other.txt", index + 1),
                 }),
                 Ok(ProviderEvent::Completed),
             ]);
@@ -10846,6 +10944,23 @@ mod tests {
             "final\n"
         );
         assert_eq!(provider.requests().len(), script_count);
+        let requests = provider.requests();
+        let write_follow_up_instructions = requests[2]
+            .messages
+            .iter()
+            .find_map(|message| match message {
+                ProviderMessage::Text {
+                    role: MessageRole::System,
+                    text,
+                } if text.contains("[workspace revalidation]") => Some(text),
+                _ => None,
+            })
+            .expect("successful write should require a current-file reread");
+        assert!(write_follow_up_instructions.contains("file.txt"));
+        assert!(requests[3].messages.iter().all(|message| {
+            !matches!(message, ProviderMessage::Text { role: MessageRole::System, text }
+                if text.contains("[workspace revalidation]"))
+        }));
         let failed_patch_results = repository
             .load(&thread_id)
             .await

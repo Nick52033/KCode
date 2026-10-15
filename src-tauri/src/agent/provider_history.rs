@@ -4,8 +4,11 @@ use std::collections::HashMap;
 use crate::protocol::{MessageRole, TokenUsage, ToolResult, UserInputAction, UserInputRequestKind};
 use crate::providers::{ProviderImage, ProviderMessage, STEP_CHAT_COMPLETIONS_REPLAY_PROVIDER};
 use crate::storage::{StoredEvent, StoredEventKind};
+use serde_json::Value;
 
 use super::input::chat_to_provider;
+
+const MAX_WORKSPACE_MUTATION_CONTEXT_BYTES: usize = 16 * 1024;
 
 /// Keeps structured compaction state separate from real post-compaction messages.
 pub(super) struct ProviderHistory {
@@ -194,14 +197,97 @@ pub(super) fn provider_history_for_turn(
 }
 
 fn provider_tool_output(name: &str, result: &ToolResult) -> String {
+    let mutation_summary = workspace_mutation_summary(name, result);
     let Some(header) = read_file_observation_header(name, result) else {
-        return result.output.clone();
+        return append_provider_tool_context(result.output.clone(), mutation_summary);
     };
-    if result.output.is_empty() {
+    let output = if result.output.is_empty() {
         header
     } else {
         format!("{header}\n{}", result.output)
+    };
+    append_provider_tool_context(output, mutation_summary)
+}
+
+fn append_provider_tool_context(mut output: String, context: Option<String>) -> String {
+    if let Some(context) = context {
+        output.push('\n');
+        output.push_str(&context);
     }
+    output
+}
+
+/// A successful workspace mutation used to be exposed to the Provider only as
+/// "applied approved change ...". The UI and persisted event still had the
+/// ChangeSet, but the next model request could not see the current hunk and
+/// could keep generating a patch against the pre-write text. Keep the durable
+/// ChangeSet unchanged and add a bounded, Provider-facing summary instead.
+fn workspace_mutation_summary(name: &str, result: &ToolResult) -> Option<String> {
+    if !result.success || !matches!(name, "apply_patch" | "write_file") {
+        return None;
+    }
+    let files = result.metadata.get("changeSet")?.get("files")?.as_array()?;
+    if files.is_empty() {
+        return None;
+    }
+
+    let mut summary = String::from(
+        "[workspace mutation applied] The following files are now changed in the workspace. Before another write to one of these files, read its current target region; do not reuse a pre-write hunk.\n",
+    );
+    for file in files {
+        let path = file
+            .get("path")
+            .and_then(Value::as_str)
+            .unwrap_or("<unknown>");
+        let destination = file
+            .get("destinationPath")
+            .and_then(Value::as_str)
+            .filter(|value| !value.is_empty());
+        let operation = file
+            .get("operation")
+            .and_then(Value::as_str)
+            .unwrap_or("modify");
+        let after_hash = file
+            .get("afterHash")
+            .and_then(Value::as_str)
+            .unwrap_or("none");
+        summary.push_str("- ");
+        summary.push_str(path);
+        if let Some(destination) = destination {
+            summary.push_str(" -> ");
+            summary.push_str(destination);
+        }
+        summary.push_str(" (operation=");
+        summary.push_str(operation);
+        summary.push_str(", afterHash=");
+        summary.push_str(after_hash);
+        summary.push_str(")\n");
+        if let Some(diff) = file.get("unifiedDiff").and_then(Value::as_str) {
+            if !diff.is_empty() {
+                summary.push_str(diff);
+                if !diff.ends_with('\n') {
+                    summary.push('\n');
+                }
+            }
+        }
+    }
+    Some(truncate_provider_context(
+        &summary,
+        MAX_WORKSPACE_MUTATION_CONTEXT_BYTES,
+    ))
+}
+
+fn truncate_provider_context(value: &str, max_bytes: usize) -> String {
+    if value.len() <= max_bytes {
+        return value.to_string();
+    }
+    let marker = "\n...[workspace mutation summary truncated]...\n";
+    let available = max_bytes.saturating_sub(marker.len());
+    let mut end = available.min(value.len());
+    while end > 0 && !value.is_char_boundary(end) {
+        end -= 1;
+    }
+    format!("{}{}", &value[..end], marker)
 }
 
 fn read_file_observation_header(name: &str, result: &ToolResult) -> Option<String> {
@@ -630,6 +716,79 @@ mod tests {
 
         assert_eq!(provider_tool_output("run_command", &result), "unchanged");
         assert_eq!(provider_tool_output("read_file", &result), "unchanged");
+    }
+
+    #[test]
+    fn successful_workspace_mutation_exposes_current_change_to_provider() {
+        let result = ToolResult {
+            success: true,
+            output: "applied approved change change-1 to 1 file(s)".into(),
+            images: Vec::new(),
+            metadata: serde_json::json!({
+                "changeSet": {
+                    "files": [{
+                        "path": "src/injected.js",
+                        "operation": "update",
+                        "afterHash": "abc123",
+                        "unifiedDiff": "@@ -1 +1 @@\n-old\n+new\n"
+                    }]
+                }
+            }),
+        };
+
+        let output = provider_tool_output("apply_patch", &result);
+
+        assert!(output.contains("[workspace mutation applied]"));
+        assert!(output.contains("src/injected.js"));
+        assert!(output.contains("afterHash=abc123"));
+        assert!(output.contains("+new"));
+        assert!(output.contains("Before another write to one of these files"));
+    }
+
+    #[test]
+    fn failed_workspace_mutation_does_not_claim_a_change_was_applied() {
+        let result = ToolResult {
+            success: false,
+            output: "patch conflicts with the workspace".into(),
+            images: Vec::new(),
+            metadata: serde_json::json!({
+                "changeSet": {
+                    "files": [{"path": "src/injected.js", "afterHash": "never"}]
+                }
+            }),
+        };
+
+        let output = provider_tool_output("apply_patch", &result);
+
+        assert!(!output.contains("[workspace mutation applied]"));
+        assert!(!output.contains("afterHash=never"));
+        assert_eq!(output, "patch conflicts with the workspace");
+    }
+
+    #[test]
+    fn workspace_mutation_summary_is_bounded_at_utf8_boundary() {
+        let result = ToolResult {
+            success: true,
+            output: String::new(),
+            images: Vec::new(),
+            metadata: serde_json::json!({
+                "changeSet": {
+                    "files": [{
+                        "path": "src/injected.js",
+                        "unifiedDiff": "界".repeat(MAX_WORKSPACE_MUTATION_CONTEXT_BYTES)
+                    }]
+                }
+            }),
+        };
+
+        let output = provider_tool_output("write_file", &result);
+
+        assert!(
+            output.len()
+                <= MAX_WORKSPACE_MUTATION_CONTEXT_BYTES
+                    + "\n...[workspace mutation summary truncated]...\n".len()
+        );
+        assert!(output.contains("[workspace mutation summary truncated]"));
     }
 
     #[test]
