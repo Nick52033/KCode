@@ -46,6 +46,33 @@ fn default_in_project() -> bool {
 const MAX_TIMELINE_DETAIL_CHARS: usize = 2_000;
 pub const DEFAULT_THREAD_HISTORY_PAGE_SIZE: u32 = 50;
 pub const MAX_THREAD_HISTORY_PAGE_SIZE: u32 = 100;
+pub const DEFAULT_THREAD_LIST_PAGE_SIZE: u32 = 25;
+pub const MAX_THREAD_LIST_PAGE_SIZE: u32 = 100;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ThreadListCursor {
+    pub updated_at_ms: u64,
+    pub id: String,
+    pub query: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ThreadListPage {
+    pub items: Vec<ThreadSummary>,
+    pub next_cursor: Option<String>,
+}
+
+pub(crate) fn encode_thread_list_cursor(cursor: &ThreadListCursor) -> String {
+    URL_SAFE_NO_PAD.encode(serde_json::to_vec(cursor).expect("thread list cursor is serializable"))
+}
+
+pub(crate) fn decode_thread_list_cursor(value: &str) -> Result<ThreadListCursor, String> {
+    let bytes = URL_SAFE_NO_PAD
+        .decode(value)
+        .map_err(|_| "invalid thread list cursor".to_string())?;
+    serde_json::from_slice(&bytes).map_err(|_| "invalid thread list cursor".to_string())
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -457,6 +484,22 @@ impl JsonlThreadRepository {
             .map_err(|error| StorageError::Io(error.to_string()))
     }
 
+    pub async fn list_thread_page(
+        &self,
+        query: &str,
+        cursor: Option<&str>,
+        limit: Option<u32>,
+    ) -> Result<ThreadListPage, StorageError> {
+        let limit = limit
+            .unwrap_or(DEFAULT_THREAD_LIST_PAGE_SIZE)
+            .clamp(1, MAX_THREAD_LIST_PAGE_SIZE);
+        let (items, next_cursor) = self
+            .projection
+            .list_thread_page(query.trim(), cursor, limit)
+            .map_err(|error| StorageError::Io(error.to_string()))?;
+        Ok(ThreadListPage { items, next_cursor })
+    }
+
     pub async fn read_thread(&self, thread_id: &str) -> Result<ThreadDetail, StorageError> {
         let events = self.load(thread_id).await?;
         project_thread(thread_id, &events)
@@ -795,6 +838,13 @@ impl JsonlThreadRepository {
     }
 
     pub fn rebuild_projection(&self) -> Result<(), StorageError> {
+        // Replaying every JSONL session on every launch is needlessly expensive:
+        // the projection is updated transactionally alongside each append. Keep a
+        // cheap high-water mark based on file write times and only replay sessions
+        // after a file changed (or when the projection is from an older version).
+        const SCAN_MARKER: &str = "storage_projection_scan_mtime_ns";
+        let mut files = Vec::new();
+        let mut max_modified_ns = 0_u64;
         for entry in
             fs::read_dir(&self.sessions_dir).map_err(|error| StorageError::Io(error.to_string()))?
         {
@@ -810,12 +860,51 @@ impl JsonlThreadRepository {
             if Uuid::parse_str(thread_id).is_err() {
                 continue;
             }
+            let modified_ns = file_modified_ns(&path);
+            max_modified_ns = max_modified_ns.max(modified_ns);
+            files.push((thread_id.to_owned(), path, modified_ns));
+        }
+
+        let marker = self
+            .projection
+            .setting(SCAN_MARKER)
+            .map_err(|error| StorageError::Io(error.to_string()))?
+            .and_then(|value| value.parse::<u64>().ok());
+        let projection_count = self
+            .projection
+            .session_count()
+            .map_err(|error| StorageError::Io(error.to_string()))?;
+        if let Some(marker) = marker {
+            if projection_count == files.len() {
+                // A changed file is replayed on its own. This keeps recovery
+                // cheap even when one large conversation was active recently.
+                files.retain(|(_, _, modified)| *modified > marker);
+                if files.is_empty() {
+                    return Ok(());
+                }
+            }
+        }
+
+        // Existing installations have a complete projection but no marker. Avoid
+        // one more full replay merely because they are upgrading to this version.
+        // If the number of session files differs, fall through to the safe replay.
+        if marker.is_none() && projection_count == files.len() {
+            self.projection
+                .set_setting(SCAN_MARKER, &max_modified_ns.to_string())
+                .map_err(|error| StorageError::Io(error.to_string()))?;
+            return Ok(());
+        }
+
+        for (thread_id, path, _) in files {
             let events = load_path(&path)?;
-            let detail = project_thread(thread_id, &events)?;
+            let detail = project_thread(&thread_id, &events)?;
             self.projection
                 .replace_thread(&detail.summary, &events)
                 .map_err(|error| StorageError::Io(error.to_string()))?;
         }
+        self.projection
+            .set_setting(SCAN_MARKER, &max_modified_ns.to_string())
+            .map_err(|error| StorageError::Io(error.to_string()))?;
         Ok(())
     }
 
@@ -2547,6 +2636,15 @@ pub fn now_ms() -> u64 {
         .as_millis() as u64
 }
 
+fn file_modified_ns(path: &Path) -> u64 {
+    fs::metadata(path)
+        .and_then(|metadata| metadata.modified())
+        .ok()
+        .and_then(|modified| modified.duration_since(UNIX_EPOCH).ok())
+        .map(|duration| duration.as_nanos().min(u64::MAX as u128) as u64)
+        .unwrap_or_default()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2577,6 +2675,38 @@ mod tests {
         let mut event = StoredEvent::new(thread_id, turn_id.map(str::to_string), kind);
         event.created_at_ms = created_at_ms;
         repository.append(event).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn thread_list_page_uses_stable_cursor_pagination() {
+        let data = tempfile::tempdir().unwrap();
+        let repository = JsonlThreadRepository::new(data.path()).unwrap();
+        let first = repository.create_thread().await.unwrap();
+        let second = repository.create_thread().await.unwrap();
+        let third = repository.create_thread().await.unwrap();
+
+        let page = repository
+            .list_thread_page("", None, Some(2))
+            .await
+            .unwrap();
+        assert_eq!(page.items.len(), 2);
+        assert!(page.next_cursor.is_some());
+        let next = repository
+            .list_thread_page("", page.next_cursor.as_deref(), Some(2))
+            .await
+            .unwrap();
+        assert_eq!(next.items.len(), 1);
+        assert!(next.next_cursor.is_none());
+        let mut ids = page
+            .items
+            .into_iter()
+            .chain(next.items)
+            .map(|thread| thread.id)
+            .collect::<Vec<_>>();
+        ids.sort();
+        let mut expected = vec![first.id, second.id, third.id];
+        expected.sort();
+        assert_eq!(ids, expected);
     }
 
     #[tokio::test]

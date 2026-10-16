@@ -168,14 +168,34 @@ export const ConversationTurnActivity = memo(function ConversationTurnActivity({
 
   if (!activities.length && !timeline.length && !plan?.steps.length && !activityStatus && !streaming) return null;
 
+  // A model can stream a short explanation that is byte-for-byte the same as the
+  // command it then sends to `run_command`. The explanation is already represented
+  // by the command row below, so rendering both turns one action into a duplicate
+  // line. Keep the command activity (and its live state), while omitting only the
+  // redundant timeline text. This applies to restored history as well as live turns.
+  const commandTexts = new Set(
+    [...activities, ...visibleTimeline.flatMap((item) => item.type === "tool" ? [item.activity] : [])]
+      .filter((activity) => activity.call.name === "run_command")
+      .map(commandText)
+      .map(normalizeDuplicateText)
+      .filter(Boolean),
+  );
   const finalResponse = !visuallyStreaming && finalMessageId
-    ? visibleTimeline.find((item): item is Extract<TurnTimelineItem, { type: "text" }> => item.type === "text" && item.id === finalMessageId)
+    ? visibleTimeline.find((item): item is Extract<TurnTimelineItem, { type: "text" }> => (
+      item.type === "text"
+        && item.id === finalMessageId
+        && !commandTexts.has(normalizeDuplicateText(item.text))
+    ))
     : null;
   const processTimeline = finalResponse ? visibleTimeline.filter((item) => item !== finalResponse) : visibleTimeline;
   const terminalEvent = [...processTimeline].reverse().find(
     (item): item is Extract<TurnTimelineItem, { type: "event" }> => item.type === "event" && isTerminalEvent(item.kind),
   );
-  const processItems = processTimeline.filter((item) => item !== terminalEvent && isVisibleConversationTimelineItem(item));
+  const processItems = processTimeline.filter((item) => (
+    item !== terminalEvent
+      && isVisibleConversationTimelineItem(item)
+      && !(item.type === "text" && commandTexts.has(normalizeDuplicateText(item.text)))
+  ));
   const turnOutcome: TerminalEventKind | null = terminalEvent && isTerminalEvent(terminalEvent.kind)
     ? terminalEvent.kind
     : null;
@@ -965,7 +985,7 @@ function ToolActivityRow({
       )}
       <span className={isCommand ? "turn-command-summary" : undefined}>
         <span className="turn-tool-heading">
-        {isCommand ? <span className="turn-tool-kind">终端</span> : null}
+        {isCommand ? <span className="turn-tool-kind">{isRunning ? "实时命令" : "命令"}</span> : null}
         <strong title={isCommand && command ? command : undefined}>{isSubagentActivity && activity.call.name === "create_agent" ? "子智能体" : title}</strong>
         {subagentLabel ? <span className="subagent-tool-label">{subagentLabel}</span> : null}
         {subagentIds.map((subagentId) => {
@@ -1157,6 +1177,10 @@ function commandText(activity: ToolActivity) {
     ? argumentsValue.args.filter((arg): arg is string => typeof arg === "string")
     : [];
   return [program, ...args].map(shellQuote).join(" ");
+}
+
+function normalizeDuplicateText(value: string) {
+  return value.replace(/\s+/g, " ").trim();
 }
 
 function fileDetailEditorHeight(content: string) {

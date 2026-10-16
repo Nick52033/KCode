@@ -245,7 +245,7 @@ export function PlanProgress({
         </header>
         {summary.state === "unreconciled" ? (
           <p className="plan-progress-notice">
-            本轮已结束，计划仍停在「进行中」。模型未在收尾前同步步骤状态，这里的进度可能落后于正文结论。
+            本轮已结束，计划仍有进行中步骤。查看详情与正文，确认后续是否需要继续。
           </p>
         ) : null}
         <ol className="plan-progress-steps">

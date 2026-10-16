@@ -8,11 +8,10 @@ import {
   getReasoningEffort,
   activateProvider as activateProviderCommand,
   deleteProvider as deleteProviderCommand,
-  listThreads,
+  listThreadPage,
   listThreadTurns,
   readThread,
   readThreadHistory,
-  searchThreads,
   renameThread,
   deleteThread,
   resolveApproval,
@@ -143,10 +142,14 @@ interface WorkbenchState {
   todos: Map<string, TodoItem[]>; // key: threadId
   historyNextCursor: string | null;
   historyLoading: boolean;
+  threadListNextCursor: string | null;
+  threadListQuery: string;
+  threadListLoading: boolean;
   loading: boolean;
   error: string;
   initialize: () => Promise<void>;
   reloadThreads: () => Promise<void>;
+  loadMoreThreads: () => Promise<void>;
   refreshThreadSummary: (threadId: string) => Promise<void>;
   searchThreadHistory: (query: string) => Promise<void>;
   renameConversation: (threadId: string, title: string) => Promise<void>;
@@ -459,6 +462,9 @@ export const useWorkbenchStore = create<WorkbenchState>((set, get) => ({
   todos: new Map(),
   historyNextCursor: null,
   historyLoading: false,
+  threadListNextCursor: null,
+  threadListQuery: "",
+  threadListLoading: false,
   loading: true,
   error: "",
 
@@ -493,8 +499,25 @@ export const useWorkbenchStore = create<WorkbenchState>((set, get) => ({
   },
 
   reloadThreads: async () => {
-    const threads = await listThreads();
-    set({ threads });
+    const page = await listThreadPage({ limit: 25 });
+    set({ threads: page.items, threadListQuery: "", threadListNextCursor: page.nextCursor });
+  },
+
+  loadMoreThreads: async () => {
+    const { threadListNextCursor: cursor, threadListQuery: query, threadListLoading } = get();
+    if (!cursor || threadListLoading) return;
+    set({ threadListLoading: true });
+    try {
+      const page = await listThreadPage({ query, cursor, limit: 25 });
+      set((state) => ({
+        threads: [...state.threads, ...page.items.filter((item) => !state.threads.some((thread) => thread.id === item.id))],
+        threadListNextCursor: page.nextCursor,
+      }));
+    } catch (error) {
+      set({ error: errorMessage(error) });
+    } finally {
+      set({ threadListLoading: false });
+    }
   },
 
   // 后端在首条 user_message 落库时自动把标题从"新会话"改成消息摘要，
@@ -505,7 +528,8 @@ export const useWorkbenchStore = create<WorkbenchState>((set, get) => ({
     // 搜索过滤下的列表不包含该会话时同样保持原样，避免把过滤结果替换成全量列表。
     if (!current || current.title !== DEFAULT_THREAD_TITLE) return;
     try {
-      const threads = await listThreads();
+      const page = await listThreadPage({ limit: 25 });
+      const threads = page.items;
       const updated = threads.find((thread) => thread.id === threadId);
       if (!updated) return;
       set((state) => ({
@@ -518,7 +542,10 @@ export const useWorkbenchStore = create<WorkbenchState>((set, get) => ({
   },
 
   searchThreadHistory: async (query) => {
-    try { set({ threads: await searchThreads(query), error: "" }); }
+    try {
+      const page = await listThreadPage({ query, limit: 25 });
+      set({ threads: page.items, threadListQuery: query.trim(), threadListNextCursor: page.nextCursor, error: "" });
+    }
     catch (error) { set({ error: errorMessage(error) }); }
   },
 
@@ -532,8 +559,9 @@ export const useWorkbenchStore = create<WorkbenchState>((set, get) => ({
   deleteConversation: async (threadId) => {
     try {
       await deleteThread(threadId);
-      const threads = await listThreads();
-      set({ threads });
+      const page = await listThreadPage({ limit: 25 });
+      const threads = page.items;
+      set({ threads, threadListQuery: "", threadListNextCursor: page.nextCursor });
       if (get().activeThreadId === threadId) {
         if (threads[0]) await get().selectThread(threads[0].id); else await get().createThread();
       }
@@ -779,12 +807,13 @@ export const useWorkbenchStore = create<WorkbenchState>((set, get) => ({
     if (!threadId) return;
     try {
       await archiveThreadCommand(threadId);
-      const threads = await listThreads();
+      const page = await listThreadPage({ limit: 25 });
+      const threads = page.items;
       if (threads.length === 0) {
         await get().createThread();
         return;
       }
-      set({ threads });
+      set({ threads, threadListQuery: "", threadListNextCursor: page.nextCursor });
       await get().selectThread(threads[0].id);
     } catch (error) {
       set({ error: errorMessage(error) });

@@ -70,9 +70,10 @@ const MAX_TOOL_CALLS_BEFORE_PROGRESS_NUDGE: u32 = 12;
 const PRODUCTIVE_PROGRESS_NUDGE: &str = "[进展提醒]\n最近多轮调用新增了观察记录，但没有推进计划或工作区变更。不要重复汇报计划状态或重复检查已确认的事实；从剩余工作中选一个具体动作并继续执行。如果现有信息足够，就开始实施并做针对性验证；如果有明确阻塞，简洁说明阻塞原因与缺少的条件后结束本轮。\n";
 const REPEATED_PRODUCTIVE_PROGRESS_NUDGE: &str = "[进展提醒·再次检查]\n上一条提醒后仍只有调查，没有实际推进。停止新增泛化搜索和重复读取；使用已经确认的信息做出最小必要修改并运行针对性验证。如果无法实施，结束本轮并明确说明具体阻塞和缺少的输入。\n";
 const FINAL_PRODUCTIVE_PROGRESS_NUDGE: &str = "[进展提醒·最后一次]\n本 Turn 已接近无进展熔断。请在本次响应中完成一个具体修改并验证，或直接结束并报告无法继续的具体原因；不要再做宽泛探索或重复读取。\n";
-/// Allow a model a couple of chances to repair one patch problem, then stop
-/// instead of spending the rest of a Turn rereading files and producing more
-/// variants of the same invalid patch.
+/// Allow a model a couple of chances to repair one exact patch shape, then stop
+/// instead of spending the rest of a Turn rereading files and resending the
+/// same invalid patch. Different patch shapes retain the larger, turn-level
+/// recovery budget below so a genuine repair attempt is not mistaken for a loop.
 const MAX_REPEATED_APPLY_PATCH_FAILURES: usize = 3;
 /// A failed patch may be followed by a few targeted reads, but a model must
 /// eventually either produce a successful patch or let the Turn fail. This
@@ -695,7 +696,28 @@ fn apply_patch_failure_signature(call: &ToolCall, result: &ToolResult) -> String
         .filter(|targets| !targets.is_empty())
         .map(|targets| targets.join("|"))
         .unwrap_or_else(|| "<unknown target>".to_string());
-    format!("{category}:{targets}")
+    let patch_shape = call
+        .arguments
+        .get("patch")
+        .and_then(Value::as_str)
+        .map(normalized_patch_shape_hash)
+        .unwrap_or_else(|| "<unknown shape>".to_string());
+    format!("{category}:{targets}:{patch_shape}")
+}
+
+/// Return a bounded local fingerprint of the exact patch shape.
+///
+/// The recovery guard must distinguish a model that keeps resending one stale
+/// patch from a model that is trying a newly rebuilt hunk for the same file.
+/// Keep the patch body out of the signature and logs: only a local hash is
+/// retained, with line endings and outer padding normalized so transport
+/// formatting does not create a false distinction.
+fn normalized_patch_shape_hash(patch: &str) -> String {
+    let normalized = patch.replace("\r\n", "\n");
+    let normalized = normalized.trim();
+    let mut hasher = DefaultHasher::new();
+    normalized.hash(&mut hasher);
+    format!("{:016x}", hasher.finish())
 }
 
 fn apply_patch_targets(patch: &str) -> Vec<String> {
@@ -720,7 +742,7 @@ fn apply_patch_targets(patch: &str) -> Vec<String> {
 
 fn repeated_apply_patch_guidance(count: usize) -> String {
     format!(
-        "\n\n[apply_patch recovery] This patch failure has repeated {count} times for the same error class and target. Do not resend the same patch shape. Re-read the exact target region, then rebuild the smallest valid patch; preserve indentation and whitespace exactly. If the diagnostic says 0 matches, rebuild the hunk from current lines; if it says multiple matches, add surrounding context until only one location matches. Every Update File needs an @@ hunk and every hunk needs a + addition or - removal. If an earlier successful patch already inserted a line that the old patch marked with '+', keep that line as current context and patch only the remaining change."
+        "\n\n[apply_patch recovery] This exact patch shape has failed {count} times for the same error class and target. Do not resend it unchanged. Re-read the exact target region, then rebuild the smallest valid patch; preserve indentation and whitespace exactly. If the diagnostic says 0 matches, rebuild the hunk from current lines; if it says multiple matches, add surrounding context until only one location matches. Every Update File needs an @@ hunk and every hunk needs a + addition or - removal. If an earlier successful patch already inserted a line that the old patch marked with '+', keep that line as current context and patch only the remaining change."
     )
 }
 
@@ -1399,6 +1421,11 @@ impl AgentRuntime {
         let mut force_compaction = false;
         let tool_definitions = self.tools.provider_definitions();
         let mut plan_reconciliation_requested = false;
+        // A truthful reconciliation may leave unfinished work in_progress (for
+        // example, when it is waiting for user confirmation). The completion
+        // gate therefore checks that the bounded update_plan call succeeded,
+        // not that every step became terminal.
+        let mut plan_reconciliation_succeeded = false;
         let mut plan_reconciliation_draft = None::<String>;
         let mut plan_reconciliation_request_pending = false;
         let mut plan_reconciliation_context = None::<PlanReconciliationContext>;
@@ -2674,14 +2701,16 @@ impl AgentRuntime {
                             iteration = iteration.saturating_add(1);
                             continue;
                         }
-                        return self
-                            .finish_failed(
-                                &thread_id,
-                                &turn_id,
-                                "计划收尾同步失败：本轮结束前仍有进行中的步骤；请检查计划后重新发送或继续。".to_string(),
-                                &publisher,
-                            )
-                            .await;
+                        if !plan_reconciliation_succeeded {
+                            return self
+                                .finish_failed(
+                                    &thread_id,
+                                    &turn_id,
+                                    "计划收尾同步失败：本轮结束前未能成功更新计划；请检查计划后重新发送或继续。".to_string(),
+                                    &publisher,
+                                )
+                                .await;
+                        }
                     }
                 }
                 publisher.publish(AgentEventEnvelope::new(AgentEvent::ActivityStatusChanged {
@@ -2945,7 +2974,7 @@ impl AgentRuntime {
                             "Re-read the target and construct one valid patch before retrying."
                         };
                         let reason = format!(
-                            "apply_patch_loop: the same apply_patch error for {targets} repeated {failure_count} times; last diagnostic: {}. Stopped this Turn. {remedy}",
+                            "apply_patch_loop: the same apply_patch shape for {targets} repeated {failure_count} times; last diagnostic: {}. Stopped this Turn. {remedy}",
                             apply_patch_failures.diagnostic(),
                         );
                         result.output.push_str(&format!("\n\n{reason}"));
@@ -2959,6 +2988,10 @@ impl AgentRuntime {
 
                 if call.name == COMPLETE_WORKFLOW_NODE_TOOL_NAME && result.success {
                     read_observations.reset_context();
+                }
+
+                if reconciliation_request && call.name == "update_plan" && result.success {
+                    plan_reconciliation_succeeded = true;
                 }
 
                 if !pending_subagent_wait {
@@ -6167,7 +6200,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn completion_guard_reconciles_a_new_plan_once_without_persisting_the_draft() {
+    async fn completion_guard_allows_successful_reconciliation_with_remaining_work() {
         let (directory, repository, _, thread_id) = runtime_fixture().await;
         let advanced = crate::advanced::AdvancedServices::new(directory.path()).unwrap();
         let handlers = advanced
@@ -6177,7 +6210,7 @@ mod tests {
             .filter(|handler| handler.definition().name == "update_plan")
             .collect();
         let tools = ToolRegistry::new(handlers).unwrap();
-        let guard_results = Arc::new(Mutex::new(VecDeque::from([true, false])));
+        let guard_results = Arc::new(Mutex::new(VecDeque::from([true, true])));
         let guard_results_for_runtime = guard_results.clone();
         let guard: Arc<dyn TurnCompletionGuard> = Arc::new(move |_| {
             Ok(guard_results_for_runtime
@@ -6189,10 +6222,10 @@ mod tests {
         let runtime =
             AgentRuntime::with_tools(repository.clone(), tools, directory.path().to_path_buf())
                 .with_turn_completion_guard(guard);
-        let completed_steps = json!({
+        let reconciled_steps = json!({
             "steps": [
                 { "id": "one", "step": "实现功能", "status": "completed" },
-                { "id": "two", "step": "验证结果", "status": "completed" }
+                { "id": "two", "step": "等待用户确认", "status": "in_progress", "detail": "改动已完成，等待用户确认" }
             ]
         });
         let provider = Arc::new(FakeProvider::script(vec![
@@ -6207,7 +6240,7 @@ mod tests {
                     call: ToolCall {
                         id: "reconcile-plan".into(),
                         name: "update_plan".into(),
-                        arguments: completed_steps,
+                        arguments: reconciled_steps,
                         metadata: json!({}),
                     },
                 }),
@@ -6243,10 +6276,15 @@ mod tests {
             "最终答复"
         );
         let plan = advanced.plans.get(&thread_id).unwrap().unwrap();
-        assert!(
+        assert_eq!(
             plan.steps
                 .iter()
-                .all(|step| step.status == crate::advanced::PlanStepState::Completed)
+                .map(|step| step.status)
+                .collect::<Vec<_>>(),
+            vec![
+                crate::advanced::PlanStepState::Completed,
+                crate::advanced::PlanStepState::InProgress,
+            ]
         );
         let events = repository.load(&thread_id).await.unwrap();
         assert!(events.iter().any(|event| matches!(
@@ -10501,7 +10539,7 @@ mod tests {
     }
 
     #[test]
-    fn apply_patch_failure_tracker_groups_error_details_by_target_and_resets() {
+    fn apply_patch_failure_tracker_counts_only_consecutive_identical_shapes() {
         let first =
             patch_call("*** Begin Patch\n*** Update File: src/lib.rs\n@@\n context\n*** End Patch");
         let second = patch_call(
@@ -10525,7 +10563,9 @@ mod tests {
         let mut tracker = ApplyPatchFailureTracker::default();
 
         assert_eq!(tracker.observe(&first, &first_result), 1);
-        assert_eq!(tracker.observe(&second, &second_result), 2);
+        assert_eq!(tracker.observe(&second, &second_result), 1);
+        assert_eq!(tracker.observe(&first, &first_result), 1);
+        assert_eq!(tracker.observe(&first, &first_result), 2);
         assert_eq!(tracker.observe(&other_target, &other_result), 1);
         tracker.reset();
         assert_eq!(tracker.observe(&first, &first_result), 1);
@@ -10591,9 +10631,8 @@ mod tests {
             editing_runtime(directory.path(), Duration::from_secs(1)).await;
         let runtime = runtime.with_approval_mode(ApprovalMode::FullAccess);
         let patch_one = "*** Begin Patch\n*** Update File: file.txt\n@@\n before\n*** End Patch";
-        let patch_two =
-            "*** Begin Patch\n*** Update File: file.txt\n@@\n before changed\n*** End Patch";
-        let patch_three = "*** Begin Patch\n*** Update File: file.txt\n@@\n*** End Patch";
+        let patch_two = patch_one;
+        let patch_three = patch_one;
         let read_other = |id: &str| ToolCall {
             id: id.to_string(),
             name: "read_file".to_string(),

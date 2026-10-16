@@ -399,6 +399,44 @@ impl AppState {
         Ok(threads)
     }
 
+    pub async fn list_conversation_thread_page(
+        &self,
+        query: &str,
+        cursor: Option<&str>,
+        limit: Option<u32>,
+    ) -> Result<crate::storage::ThreadListPage, StorageError> {
+        let child_ids: HashSet<_> = self
+            .subagents
+            .list(None)
+            .into_iter()
+            .map(|agent| agent.thread_id)
+            .collect();
+        let limit = limit
+            .unwrap_or(crate::storage::DEFAULT_THREAD_LIST_PAGE_SIZE)
+            .clamp(1, crate::storage::MAX_THREAD_LIST_PAGE_SIZE) as usize;
+        let mut current_cursor = cursor.map(str::to_owned);
+        let mut items = Vec::with_capacity(limit);
+        loop {
+            let page = self
+                .repository
+                .list_thread_page(query, current_cursor.as_deref(), Some(limit as u32))
+                .await?;
+            items.extend(
+                page.items
+                    .into_iter()
+                    .filter(|thread| !child_ids.contains(&thread.id)),
+            );
+            if items.len() >= limit || page.next_cursor.is_none() {
+                items.truncate(limit);
+                return Ok(crate::storage::ThreadListPage {
+                    items,
+                    next_cursor: page.next_cursor,
+                });
+            }
+            current_cursor = page.next_cursor;
+        }
+    }
+
     pub fn runtime_repository(&self) -> Arc<dyn ThreadRepository> {
         self.repository.clone()
     }

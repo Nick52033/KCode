@@ -923,6 +923,15 @@ test.beforeEach(async ({ page }) => {
             const forcedThreadWorkspacePath = localStorage.getItem("kcode_e2e_thread_workspace_path");
             if (forcedThreadWorkspacePath) return [{ ...thread, workspacePath: forcedThreadWorkspacePath }];
           }
+          if (command === "list_thread_page") {
+            const configured = localStorage.getItem("kcode_e2e_threads");
+            const items = configured
+              ? JSON.parse(configured)
+              : localStorage.getItem("kcode_e2e_thread_workspace_path")
+                ? [{ ...thread, workspacePath: localStorage.getItem("kcode_e2e_thread_workspace_path") }]
+                : [thread, secondThread];
+            return { items, nextCursor: null };
+          }
           if (command === "list_subagents") {
             const configured = localStorage.getItem("kcode_e2e_subagents");
             if (configured) return JSON.parse(configured);
@@ -8754,7 +8763,7 @@ test("plan progress and change list deduplicate repeated file changes by path", 
   await expect(progress).toHaveCount(1);
   await progress.click();
   const details = page.getByRole("dialog", { name: "执行计划详情" });
-  await expect(details).toContainText("模型未在收尾前同步步骤状态");
+  await expect(details).toContainText("计划仍有进行中步骤");
   await expect(details.locator(".plan-progress-step--completed")).toContainText("检查工作区");
   await expect(details.locator(".plan-progress-step--in_progress")).toContainText("验证实现");
   await page.reload({ waitUntil: "domcontentloaded" });

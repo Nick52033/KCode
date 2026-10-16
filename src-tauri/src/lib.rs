@@ -303,6 +303,7 @@ pub fn run() {
             commands::delete_provider_api_key,
             commands::threads::create_thread,
             commands::threads::list_threads,
+            commands::threads::list_thread_page,
             commands::threads::search_threads,
             commands::threads::rename_thread,
             commands::threads::delete_thread,

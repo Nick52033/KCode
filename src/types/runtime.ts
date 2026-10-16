@@ -372,6 +372,11 @@ export interface ThreadSummary {
   modelSelection?: ThreadModelSelection | null;
 }
 
+export interface ThreadListPage {
+  items: ThreadSummary[];
+  nextCursor: string | null;
+}
+
 export interface ThreadModelSelection {
   providerId: string;
   model: string;

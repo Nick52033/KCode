@@ -59,6 +59,10 @@ struct BrowserSession {
     browser: Browser,
     page: Page,
     handler_task: JoinHandle<()>,
+    // chromiumoxide's default profile is a process-global directory. Keep a
+    // private profile per session so an orphaned browser from a previous
+    // app instance cannot make the next launch exit with Chrome status 21.
+    profile_dir: PathBuf,
 }
 
 struct BrowserInner {
@@ -379,15 +383,30 @@ impl BrowserService {
         if guard.is_some() {
             return Ok(());
         }
-        let config = BrowserConfig::builder()
+        let profile_dir =
+            std::env::temp_dir().join(format!("kcode-browser-{}", Uuid::new_v4().simple()));
+        fs::create_dir_all(&profile_dir)
+            .map_err(|error| format!("无法为内嵌浏览器创建临时用户数据目录：{error}"))?;
+        let config = match BrowserConfig::builder()
             // Windows 上 Chromium 常因缺少沙箱权限在启动瞬间退出（进程码 21），
             // 表现为「browser_navigate 失败」；禁用沙箱让内嵌浏览器可以正常拉起。
             .no_sandbox()
+            .user_data_dir(&profile_dir)
             .build()
-            .map_err(|error| error.to_string())?;
-        let (browser, mut handler) = Browser::launch(config)
-            .await
-            .map_err(|error| browser_launch_failure(&error.to_string()))?;
+        {
+            Ok(config) => config,
+            Err(error) => {
+                let _ = fs::remove_dir_all(&profile_dir);
+                return Err(error);
+            }
+        };
+        let (mut browser, mut handler) = match Browser::launch(config).await {
+            Ok(result) => result,
+            Err(error) => {
+                let _ = fs::remove_dir_all(&profile_dir);
+                return Err(browser_launch_failure(&error.to_string()));
+            }
+        };
         let handler_task = tokio::spawn(async move {
             while let Some(result) = handler.next().await {
                 if result.is_err() {
@@ -395,14 +414,22 @@ impl BrowserService {
                 }
             }
         });
-        let page = browser
-            .new_page("about:blank")
-            .await
-            .map_err(|error| error.to_string())?;
+        let page = match browser.new_page("about:blank").await {
+            Ok(page) => page,
+            Err(error) => {
+                let _ = browser.close().await;
+                let _ =
+                    tokio::time::timeout(std::time::Duration::from_secs(2), browser.wait()).await;
+                handler_task.abort();
+                let _ = fs::remove_dir_all(&profile_dir);
+                return Err(error.to_string());
+            }
+        };
         *guard = Some(BrowserSession {
             browser,
             page,
             handler_task,
+            profile_dir,
         });
         Ok(())
     }
@@ -425,7 +452,18 @@ impl BrowserService {
 async fn close_session(guard: &mut Option<BrowserSession>) {
     if let Some(mut session) = guard.take() {
         let _ = session.browser.close().await;
+        // Wait for Chromium to release the profile lock before removing the profile.
+        // This keeps a quick close/reopen from racing the old child process.
+        if tokio::time::timeout(std::time::Duration::from_secs(2), session.browser.wait())
+            .await
+            .is_err()
+        {
+            // A broken CDP connection can prevent a graceful close from
+            // being observed. Kill the child before releasing its profile.
+            let _ = session.browser.kill().await;
+        }
         session.handler_task.abort();
+        let _ = fs::remove_dir_all(session.profile_dir);
     }
 }
 

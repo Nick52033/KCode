@@ -660,6 +660,101 @@ impl ProjectionDb {
             .collect::<Result<Vec<_>, _>>()?)
     }
 
+    pub fn list_thread_page(
+        &self,
+        query: &str,
+        cursor: Option<&str>,
+        limit: u32,
+    ) -> Result<(Vec<ThreadSummary>, Option<String>), ProjectionError> {
+        let limit = limit.clamp(1, 100) as usize;
+        let query = query.trim();
+        let cursor = cursor
+            .map(|value| {
+                crate::storage::decode_thread_list_cursor(value)
+                    .map_err(ProjectionError::InvalidData)
+            })
+            .transpose()?;
+        if let Some(cursor) = &cursor
+            && cursor.query != query
+        {
+            return Err(ProjectionError::InvalidData(
+                "thread list cursor does not match query".to_string(),
+            ));
+        }
+
+        let mut sql = String::from(
+            "SELECT id,title,created_at_ms,updated_at_ms,archived,workspace_path,in_project
+             FROM sessions
+             WHERE archived=0
+               AND (?1='' OR LOWER(title) LIKE '%' || LOWER(?1) || '%'
+                    OR EXISTS (SELECT 1 FROM indexed_events e
+                               WHERE e.thread_id=sessions.id
+                                 AND LOWER(e.event_json) LIKE '%' || LOWER(?1) || '%'))",
+        );
+        if cursor.is_some() {
+            sql.push_str(" AND (updated_at_ms < ?2 OR (updated_at_ms = ?2 AND id < ?3))");
+        }
+        sql.push_str(" ORDER BY updated_at_ms DESC, id DESC LIMIT ?4");
+
+        let connection = self
+            .connection
+            .lock()
+            .map_err(|_| ProjectionError::Poisoned)?;
+        let mut statement = connection.prepare(&sql)?;
+        let cursor_time = cursor.as_ref().map(|value| value.updated_at_ms as i64);
+        let cursor_id = cursor.as_ref().map(|value| value.id.as_str());
+        let rows = statement
+            .query_map(
+                rusqlite::params![query, cursor_time, cursor_id, (limit + 1) as i64],
+                |row| {
+                    Ok(ThreadSummary {
+                        schema_version: crate::protocol::PROTOCOL_VERSION,
+                        id: row.get(0)?,
+                        title: row.get(1)?,
+                        created_at_ms: row.get(2)?,
+                        updated_at_ms: row.get(3)?,
+                        archived: row.get::<_, i64>(4)? != 0,
+                        workspace_path: row.get(5)?,
+                        in_project: row.get::<_, i64>(6)? != 0,
+                        model_selection: None,
+                    })
+                },
+            )?
+            .collect::<Result<Vec<_>, _>>()?;
+        let has_more = rows.len() > limit;
+        let mut rows = rows;
+        rows.truncate(limit);
+        let next_cursor = has_more
+            .then(|| {
+                rows.last().map(|thread| {
+                    crate::storage::encode_thread_list_cursor(&crate::storage::ThreadListCursor {
+                        updated_at_ms: thread.updated_at_ms,
+                        id: thread.id.clone(),
+                        query: query.to_string(),
+                    })
+                })
+            })
+            .flatten();
+        Ok((rows, next_cursor))
+    }
+
+    /// Returns the number of session projections, including archived sessions.
+    ///
+    /// Startup uses this cheap metadata query to bootstrap the projection scan
+    /// marker on installations created before the marker was introduced.
+    pub fn session_count(&self) -> Result<usize, ProjectionError> {
+        let connection = self
+            .connection
+            .lock()
+            .map_err(|_| ProjectionError::Poisoned)?;
+        connection
+            .query_row("SELECT COUNT(*) FROM sessions", [], |row| {
+                row.get::<_, i64>(0)
+            })
+            .map(|count| count.max(0) as usize)
+            .map_err(ProjectionError::Database)
+    }
+
     pub fn set_setting(&self, key: &str, value: &str) -> Result<(), ProjectionError> {
         self.connection
             .lock()
@@ -1320,6 +1415,18 @@ fn migrate(connection: &Connection) -> Result<(), rusqlite::Error> {
         )?;
         transaction.execute(
             "INSERT INTO schema_migrations(version,applied_at) VALUES(11,datetime('now'))",
+            [],
+        )?;
+        transaction.commit()?;
+    }
+    if version < 12 {
+        let transaction = connection.unchecked_transaction()?;
+        transaction.execute_batch(
+            "CREATE INDEX IF NOT EXISTS sessions_list_order
+               ON sessions(archived,updated_at_ms DESC,id DESC);",
+        )?;
+        transaction.execute(
+            "INSERT INTO schema_migrations(version,applied_at) VALUES(12,datetime('now'))",
             [],
         )?;
         transaction.commit()?;

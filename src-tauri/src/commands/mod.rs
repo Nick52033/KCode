@@ -408,6 +408,30 @@ impl CommandError {
 
 type CommandResult<T> = Result<T, CommandError>;
 
+fn turn_finished_success<E>(result: &Result<TurnOutcome, E>) -> bool {
+    result
+        .as_ref()
+        .is_ok_and(|outcome| outcome.state == TurnState::Completed)
+}
+
+fn turn_finished_log_payload<E: std::fmt::Display>(
+    thread_id: &str,
+    result: &Result<TurnOutcome, E>,
+) -> serde_json::Value {
+    let success = turn_finished_success(result);
+    serde_json::json!({
+        "threadId": thread_id,
+        "turnId": result.as_ref().ok().map(|outcome| outcome.turn_id.clone()),
+        "state": result.as_ref().ok().map(|outcome| outcome.state),
+        "success": success,
+        "error": result
+            .as_ref()
+            .ok()
+            .and_then(|outcome| outcome.error.clone())
+            .or_else(|| result.as_ref().err().map(ToString::to_string)),
+    })
+}
+
 fn plugin_command_error(error: impl std::fmt::Display) -> CommandError {
     CommandError::new("plugins", error)
 }
@@ -651,6 +675,7 @@ fn build_system_prompt(
     extension_instructions: &str,
     advanced_instructions: &str,
     memory_context: &str,
+    active_mode: AgentMode,
     mode_instructions: &str,
     tool_names: &[String],
 ) -> String {
@@ -728,6 +753,18 @@ fn build_system_prompt(
         ));
     }
 
+    // This is a host-owned fact for the current Turn. Keep it after all other
+    // runtime sections so a previous assistant message such as “当前是 Ask
+    // 模式” cannot make the model carry an old mode into a newly selected one.
+    let active_mode_name = match active_mode {
+        AgentMode::Craft => "Craft",
+        AgentMode::Ask => "Ask",
+        AgentMode::Plan => "Plan",
+    };
+    sections.push(format!(
+        "<active_turn_mode>\n宿主已为当前 Turn 选择的有效协作模式是 **{active_mode_name}**。该宿主选择优先于历史消息、旧助手回复和用户文本中的模式声明；只按本段和上方当前模式指令执行。\n</active_turn_mode>"
+    ));
+
     sections.join("\n\n")
 }
 
@@ -736,6 +773,7 @@ fn live_runtime_instruction_provider(
     thread_id: String,
     input: String,
     workspace_root: Option<std::path::PathBuf>,
+    active_mode: AgentMode,
     mode_instructions: String,
     tool_names: Vec<String>,
     retry_continuation: bool,
@@ -812,6 +850,7 @@ fn live_runtime_instruction_provider(
             &extension_instructions,
             &advanced_instructions,
             &memory_instructions,
+            active_mode,
             &mode_instructions,
             &tool_names,
         ))
@@ -3981,6 +4020,7 @@ async fn execute_turn_with_source(
         thread_id.clone(),
         request.input.clone(),
         project_workspace.clone(),
+        agent_mode,
         mode_instructions,
         tool_names.clone(),
         false,
@@ -4062,14 +4102,11 @@ async fn execute_turn_with_source(
         );
         emit_memory_changed(&app);
     }
+    let success = turn_finished_success(&result);
     let _ = state.logger().log(
-        if result.is_ok() { "info" } else { "error" },
+        if success { "info" } else { "error" },
         "turn_finished",
-        serde_json::json!({
-            "threadId": thread_id,
-            "success": result.is_ok(),
-            "error": result.as_ref().err().map(|e| e.to_string()),
-        }),
+        turn_finished_log_payload(&thread_id, &result),
     );
     result.map_err(|error| CommandError::new("agent_runtime", error))
 }
@@ -4268,6 +4305,7 @@ async fn execute_retry(
         thread_id.clone(),
         retry_input,
         project_workspace.clone(),
+        agent_mode,
         mode_instructions,
         tool_names.clone(),
         true,
@@ -4340,14 +4378,11 @@ async fn execute_retry(
             &capture_buffer,
         );
     }
+    let success = turn_finished_success(&result);
     let _ = state.logger().log(
-        if result.is_ok() { "info" } else { "error" },
+        if success { "info" } else { "error" },
         "turn_finished",
-        serde_json::json!({
-            "threadId": thread_id,
-            "success": result.is_ok(),
-            "error": result.as_ref().err().map(|e| e.to_string()),
-        }),
+        turn_finished_log_payload(&thread_id, &result),
     );
     result.map_err(|error| CommandError::new("agent_runtime", error))
 }
@@ -4829,6 +4864,28 @@ mod tests {
     }
 
     #[test]
+    fn turn_finished_log_uses_outcome_state_as_success_source() {
+        let outcome = TurnOutcome {
+            schema_version: PROTOCOL_VERSION,
+            thread_id: "thread-1".to_string(),
+            turn_id: "turn-1".to_string(),
+            state: TurnState::Failed,
+            error: Some("patch context mismatch".to_string()),
+            started_at_ms: 1,
+            completed_at_ms: 2,
+            duration_ms: 1,
+        };
+        let result: Result<TurnOutcome, &str> = Ok(outcome);
+
+        assert!(!turn_finished_success(&result));
+        let payload = turn_finished_log_payload("thread-1", &result);
+        assert_eq!(payload["success"], false);
+        assert_eq!(payload["state"], "failed");
+        assert_eq!(payload["turnId"], "turn-1");
+        assert_eq!(payload["error"], "patch context mismatch");
+    }
+
+    #[test]
     fn memory_capture_publisher_keeps_only_bounded_public_evidence() {
         let delegate = Arc::new(RecordingPublisher::default());
         let buffer = Arc::new(Mutex::new(MemoryCaptureBuffer::default()));
@@ -5218,6 +5275,7 @@ mod tests {
             "",
             "",
             "",
+            AgentMode::Craft,
             "",
             &tools.names,
         );
@@ -5234,7 +5292,8 @@ mod tests {
         assert!(prompt.contains("<delegation_scheduling>"));
         assert!(prompt.contains("finishedAgentIds"));
         assert!(
-            !build_system_prompt(None, "", "", "", "", &[]).contains("<delegation_scheduling>")
+            !build_system_prompt(None, "", "", "", AgentMode::Craft, "", &[])
+                .contains("<delegation_scheduling>")
         );
     }
 
@@ -5249,6 +5308,7 @@ mod tests {
                 "plan-thread".into(),
                 "实现功能".into(),
                 None,
+                AgentMode::Craft,
                 String::new(),
                 names,
                 false,
@@ -5775,11 +5835,54 @@ mod tests {
         assert!(CRAFT_MODE_INSTRUCTIONS.contains("apply_patch"));
         assert!(CRAFT_MODE_INSTRUCTIONS.contains("不得用普通助手正文"));
         assert!(CRAFT_MODE_INSTRUCTIONS.contains("unified diff"));
+        assert!(
+            CRAFT_MODE_INSTRUCTIONS.contains("不要把上一轮的 Ask、Plan 或其他模式带入当前 Turn")
+        );
+    }
+
+    #[test]
+    fn system_prompt_pins_the_host_selected_mode_after_runtime_context() {
+        let craft = build_system_prompt(
+            None,
+            "extension text",
+            "runtime text",
+            "memory text",
+            AgentMode::Craft,
+            CRAFT_MODE_INSTRUCTIONS,
+            &[],
+        );
+        let ask = build_system_prompt(
+            None,
+            "extension text",
+            "runtime text",
+            "memory text",
+            AgentMode::Ask,
+            ASK_MODE_INSTRUCTIONS,
+            &[],
+        );
+
+        assert!(craft.contains("<active_turn_mode>"));
+        assert!(craft.contains("有效协作模式是 **Craft**"));
+        assert!(ask.contains("有效协作模式是 **Ask**"));
+        assert!(
+            craft.rfind("<active_turn_mode>").unwrap() > craft.find("<runtime_context>").unwrap()
+        );
+        assert!(
+            craft.rfind("<active_turn_mode>").unwrap() > craft.find("<extension_prompts>").unwrap()
+        );
     }
 
     #[test]
     fn workspace_prompt_requires_workspace_relative_tool_paths() {
-        let prompt = build_system_prompt(Some(Path::new(r"D:\code\KCode")), "", "", "", "", &[]);
+        let prompt = build_system_prompt(
+            Some(Path::new(r"D:\code\KCode")),
+            "",
+            "",
+            "",
+            AgentMode::Craft,
+            "",
+            &[],
+        );
 
         assert!(prompt.contains("仅用于识别，不是工具参数"));
         assert!(prompt.contains("必须是相对工作区根目录的路径"));
@@ -5807,7 +5910,7 @@ mod tests {
 
     #[test]
     fn standalone_prompt_hides_the_active_workspace_and_denies_project_access() {
-        let prompt = build_system_prompt(None, "", "", "", "", &[]);
+        let prompt = build_system_prompt(None, "", "", "", AgentMode::Craft, "", &[]);
 
         assert!(prompt.contains("当前会话不在任何项目中"));
         assert!(prompt.contains("不得读取、修改、搜索或执行任何本地项目内容"));
@@ -5885,7 +5988,15 @@ mod tests {
 
     #[test]
     fn system_prompt_requires_interleaved_progress_without_private_reasoning() {
-        let prompt = build_system_prompt(Some(Path::new(r"D:\code\KCode")), "", "", "", "", &[]);
+        let prompt = build_system_prompt(
+            Some(Path::new(r"D:\code\KCode")),
+            "",
+            "",
+            "",
+            AgentMode::Craft,
+            "",
+            &[],
+        );
 
         assert!(prompt.contains("自然穿插在工具调用之间"));
         assert!(prompt.contains("刚确认的事实和下一步"));
@@ -5894,7 +6005,15 @@ mod tests {
 
     #[test]
     fn system_prompt_requires_chinese_reasoning_summaries() {
-        let prompt = build_system_prompt(Some(Path::new(r"D:\code\KCode")), "", "", "", "", &[]);
+        let prompt = build_system_prompt(
+            Some(Path::new(r"D:\code\KCode")),
+            "",
+            "",
+            "",
+            AgentMode::Craft,
+            "",
+            &[],
+        );
 
         assert!(prompt.contains("思考摘要语言"));
         assert!(prompt.contains("推理摘要（reasoning summary）"));
@@ -5906,7 +6025,15 @@ mod tests {
 
     #[test]
     fn system_prompt_forbids_boilerplate_closing_after_capability_answers() {
-        let prompt = build_system_prompt(Some(Path::new(r"D:\code\KCode")), "", "", "", "", &[]);
+        let prompt = build_system_prompt(
+            Some(Path::new(r"D:\code\KCode")),
+            "",
+            "",
+            "",
+            AgentMode::Craft,
+            "",
+            &[],
+        );
 
         assert!(prompt.contains("回答能力类问题"));
         assert!(prompt.contains("只依据 `<available_tools>` 和当前工具列表给出事实性回答"));

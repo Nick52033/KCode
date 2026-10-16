@@ -166,6 +166,10 @@ const MAX_TOTAL_IMAGE_ATTACHMENT_BYTES = 8 * 1024 * 1024;
 const MAX_LOCAL_DOCUMENT_BYTES = 8 * 1024 * 1024;
 const MAX_DOCUMENT_CONTEXT_BYTES = 64 * 1024;
 const MAX_MESSAGE_INPUT_BYTES = 100_000;
+// Document attachments travel inside the existing string input so queued turns and
+// retries keep the same request contract. The agent runtime converts these records
+// into Context blocks, which are available to the model but excluded from visible text.
+const DOCUMENT_ATTACHMENT_PREFIX = "\u001eKCODE_DOCUMENT_ATTACHMENT_V1:";
 
 const IMAGE_MIME_BY_EXTENSION: Record<string, string> = {
   png: "image/png",
@@ -541,6 +545,7 @@ function App() {
     selectThread,
     reloadWorkflows,
     loadOlderHistory,
+    loadMoreThreads,
     sendMessage,
     retryLastTurn,
     stopTurn,
@@ -548,7 +553,6 @@ function App() {
     resolvePendingUserInput,
     undoAppliedChange,
     undoAppliedChanges,
-    acceptAppliedChanges,
     saveProvider,
     activateProvider,
     selectThreadModel,
@@ -1576,18 +1580,6 @@ function App() {
     const reviewableIds = reviewableChanges.map((change) => change.id);
     const reviewInProgress = reviewableIds.some((id) => reviewingChangeIds.has(id));
     const reviewBlockedByTurn = currentThreadBusy;
-    const acceptChanges = async () => {
-      setReviewingChangeIds((previous) => new Set([...previous, ...reviewableIds]));
-      try {
-        await acceptAppliedChanges(reviewableIds);
-      } finally {
-        setReviewingChangeIds((previous) => {
-          const next = new Set(previous);
-          reviewableIds.forEach((id) => next.delete(id));
-          return next;
-        });
-      }
-    };
     const undoChanges = async () => {
       setReviewingChangeIds((previous) => new Set([...previous, ...reviewableIds]));
       try {
@@ -1623,14 +1615,6 @@ function App() {
           </button>
           {reviewableChanges.length > 0 && (
             <div className="changes-review-actions">
-              <button
-                type="button"
-                disabled={reviewInProgress || reviewBlockedByTurn}
-                title="保留本轮修改"
-                onClick={() => void acceptChanges()}
-              >
-                <Check size={13} />接受
-              </button>
               <button
                 type="button"
                 disabled={reviewInProgress || reviewBlockedByTurn}
@@ -1968,10 +1952,17 @@ function App() {
         return;
       }
     }
-    const attachmentContext = attachments.filter((attachment) => attachment.kind === "document").map((attachment) =>
-      `\n\n[附件: ${attachment.name}]\n${attachment.content}`,
-    ).join("");
-    const composedInput = message + attachmentContext;
+    const documentAttachments = attachments.filter((attachment) => attachment.kind === "document");
+    const attachmentLabels = documentAttachments.map((attachment) => `[附件: ${attachment.name}]`).join("\n");
+    const attachmentContext = documentAttachments
+      .map((attachment) => `${DOCUMENT_ATTACHMENT_PREFIX}${JSON.stringify({
+        name: attachment.name,
+        content: attachment.content,
+      })}`)
+      .join("\n");
+    const composedInput = [message, attachmentLabels, attachmentContext]
+      .filter(Boolean)
+      .join("\n");
     if (utf8Bytes(composedInput) > MAX_MESSAGE_INPUT_BYTES) {
       toast.error("消息与文档内容合计不能超过 100 KB，请移除部分附件或缩短消息");
       return;
@@ -2537,7 +2528,10 @@ function App() {
             )}
           </label>
           {sideView === "conversations" ? (
-            <nav className="thread-list" aria-label="会话列表">
+            <nav className="thread-list" aria-label="会话列表" onScroll={(event) => {
+              const element = event.currentTarget;
+              if (element.scrollHeight - element.scrollTop - element.clientHeight < 96) void loadMoreThreads();
+            }}>
               {conversationListThreads.map((thread) => {
                 const isThreadRunning = Boolean(activeTurns[thread.id]);
                 return (

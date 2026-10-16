@@ -39,6 +39,7 @@ import type {
   ThreadHistorySnapshot,
   ThreadItemsPage,
   ThreadSummary,
+  ThreadListPage,
   ThreadTurnsPage,
   HistorySortDirection,
   TurnItemsView,
@@ -176,6 +177,14 @@ export function createThread(inProject = true) {
 
 export function listThreads() {
   return invoke<ThreadSummary[]>("list_threads");
+}
+
+export function listThreadPage(options: { query?: string; cursor?: string | null; limit?: number } = {}) {
+  return invoke<ThreadListPage>("list_thread_page", {
+    query: options.query ?? "",
+    cursor: options.cursor ?? null,
+    limit: options.limit ?? 25,
+  });
 }
 
 export function readThread(threadId: string) {

@@ -7,7 +7,7 @@ use crate::persistence::UsageSummary;
 use crate::protocol::{
     HistorySortDirection, ThreadHistorySnapshot, ThreadItemsPage, ThreadTurnsPage, TurnItemsView,
 };
-use crate::storage::{ThreadDetail, ThreadSummary};
+use crate::storage::{ThreadDetail, ThreadListPage, ThreadSummary};
 
 use super::{CommandError, CommandResult};
 
@@ -42,6 +42,19 @@ pub async fn search_threads(
 ) -> CommandResult<Vec<ThreadSummary>> {
     state
         .list_conversation_threads(&query)
+        .await
+        .map_err(|error| CommandError::new("storage", error))
+}
+
+#[tauri::command(rename_all = "camelCase")]
+pub async fn list_thread_page(
+    state: State<'_, AppState>,
+    query: Option<String>,
+    cursor: Option<String>,
+    limit: Option<u32>,
+) -> CommandResult<ThreadListPage> {
+    state
+        .list_conversation_thread_page(query.as_deref().unwrap_or(""), cursor.as_deref(), limit)
         .await
         .map_err(|error| CommandError::new("storage", error))
 }
